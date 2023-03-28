@@ -41,11 +41,17 @@ endfunction( )
 prepend_path( ".." hipsolver_headers_public relative_hipsolver_headers_public )
 
 if( NOT USE_CUDA )
-  set( hipsolver_source
-    "${CMAKE_CURRENT_SOURCE_DIR}/amd_detail/hipsolver.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/amd_detail/hipsolver_compat.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/common/hipsolver_compat_common.cpp"
-  )
+  if (NOT USE_ONEAPI)
+    set( hipsolver_source
+      "${CMAKE_CURRENT_SOURCE_DIR}/amd_detail/hipsolver.cpp"
+      "${CMAKE_CURRENT_SOURCE_DIR}/amd_detail/hipsolver_compat.cpp"
+      "${CMAKE_CURRENT_SOURCE_DIR}/common/hipsolver_compat_common.cpp"
+    )
+  else()
+    set( hipsolver_source
+      "${CMAKE_CURRENT_SOURCE_DIR}/oneapi_detail/hipsolver.cpp"
+    )
+  endif( )
 else( )
   set( hipsolver_source
     "${CMAKE_CURRENT_SOURCE_DIR}/nvidia_detail/hipsolver.cpp"
@@ -58,7 +64,7 @@ set (hipsolver_f90_source
   hipsolver_module.f90
 )
 
-if( UNIX )
+if( UNIX AND NOT USE_ONEAPI)
   # Create hipSOLVER Fortran module
   add_library(hipsolver_fortran ${hipsolver_f90_source})
 endif( )
@@ -91,7 +97,9 @@ if( WIN32 )
 endif( )
 
 # Build hipsolver from source on AMD platform
-if( NOT USE_CUDA )
+if( USE_ONEAPI )
+  target_link_libraries( hipsolver PRIVATE hip::host )
+elseif( NOT USE_CUDA )
   if( NOT TARGET rocblas )
     if( CUSTOM_ROCBLAS )
       set ( ENV{rocblas_DIR} ${CUSTOM_ROCBLAS})
@@ -115,7 +123,6 @@ if( NOT USE_CUDA )
   if( CUSTOM_TARGET )
     target_link_libraries( hipsolver PRIVATE hip::${CUSTOM_TARGET} )
   endif( )
-
 else( )
   target_compile_definitions( hipsolver PRIVATE __HIP_PLATFORM_NVCC__ )
 
@@ -128,6 +135,16 @@ else( )
       $<BUILD_INTERFACE:${CUDA_INCLUDE_DIRS}>
   )
 endif( )
+
+if (USE_ONEAPI)
+  target_link_libraries( hipsolver PRIVATE hip::host )
+
+  # External header includes included as system files
+  target_include_directories( hipsolver
+    SYSTEM PRIVATE
+      $<BUILD_INTERFACE:${HIP_INCLUDE_DIRS}>
+  )
+endif()
 
 # Internal header includes
 target_include_directories( hipsolver
@@ -142,7 +159,7 @@ target_include_directories( hipsolver
           ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-rocm_set_soversion( hipsolver ${hipsolver_SOVERSION} )
+#rocm_set_soversion( hipsolver ${hipsolver_SOVERSION} )
 set_target_properties( hipsolver PROPERTIES CXX_EXTENSIONS NO )
 set_target_properties( hipsolver PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/staging" )
 set_target_properties( hipsolver PROPERTIES DEBUG_POSTFIX "-d" )
@@ -153,13 +170,15 @@ set_target_properties( hipsolver PROPERTIES CXX_VISIBILITY_PRESET "hidden" VISIB
 generate_export_header( hipsolver EXPORT_FILE_NAME ${PROJECT_BINARY_DIR}/include/hipsolver/internal/hipsolver-export.h )
 
 execute_process(COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/library/include ${PROJECT_BINARY_DIR}/include/hipsolver)
-if (BUILD_FILE_REORG_BACKWARD_COMPATIBILITY)
-  rocm_wrap_header_file(
-    internal/hipsolver-version.h internal/hipsolver-export.h
-    GUARDS SYMLINK WRAPPER
-    WRAPPER_LOCATIONS ${CMAKE_INSTALL_INCLUDEDIR} hipsolver/${CMAKE_INSTALL_INCLUDEDIR}
-    ORIGINAL_FILES ${PROJECT_BINARY_DIR}/include/hipsolver/internal/hipsolver-version.h
-  )
+if (NOT USE_ONEAPI)
+  if (BUILD_FILE_REORG_BACKWARD_COMPATIBILITY)
+    rocm_wrap_header_file(
+      internal/hipsolver-version.h internal/hipsolver-export.h
+      GUARDS SYMLINK WRAPPER
+      WRAPPER_LOCATIONS ${CMAKE_INSTALL_INCLUDEDIR} hipsolver/${CMAKE_INSTALL_INCLUDEDIR}
+      ORIGINAL_FILES ${PROJECT_BINARY_DIR}/include/hipsolver/internal/hipsolver-version.h
+    )
+  endif( )
 endif( )
 
 
@@ -171,18 +190,22 @@ endif( )
 ############################################################
 # Installation
 
-rocm_install_targets(
-  TARGETS hipsolver
-  INCLUDE
-    ${CMAKE_BINARY_DIR}/include
-)
+if (NOT USE_ONEAPI)
+  rocm_install_targets(
+    TARGETS hipsolver
+    INCLUDE
+      ${CMAKE_BINARY_DIR}/include
+  )
+endif( )
 
 if ( NOT USE_CUDA )
-  rocm_export_targets(
-    TARGETS roc::hipsolver
-    DEPENDS PACKAGE hip
-    NAMESPACE roc::
-  )
+  if (NOT USE_ONEAPI)
+    rocm_export_targets(
+      TARGETS roc::hipsolver
+      DEPENDS PACKAGE hip
+      NAMESPACE roc::
+    )
+  endif()
 else( )
   rocm_export_targets(
     TARGETS roc::hipsolver
@@ -197,7 +220,7 @@ if( UNIX )
           DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/hipsolver")
 endif( )
 
-if(BUILD_FILE_REORG_BACKWARD_COMPATIBILITY)
+if(BUILD_FILE_REORG_BACKWARD_COMPATIBILITY AND NOT USE_ONEAPI)
   rocm_install(
     DIRECTORY
        "${PROJECT_BINARY_DIR}/hipsolver"
@@ -209,7 +232,7 @@ if(BUILD_FILE_REORG_BACKWARD_COMPATIBILITY)
     rocm_install(
       CODE "
         set(PREFIX \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX})
-	set(INPUT_FILE \${PREFIX}/include/hipsolver/hipsolver_module.f90)
+        set(INPUT_FILE \${PREFIX}/include/hipsolver/hipsolver_module.f90)
         set(SYMLINK_LOCATIONS \${PREFIX}/hipsolver/include \${PREFIX}/include)
         foreach(LOCATION IN LISTS SYMLINK_LOCATIONS)
           file(MAKE_DIRECTORY \${LOCATION})

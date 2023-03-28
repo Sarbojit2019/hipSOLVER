@@ -44,53 +44,56 @@ if ( NOT DEFINED CMAKE_Fortran_COMPILER AND NOT DEFINED ENV{FC} )
 endif()
 
 project( hipsolver LANGUAGES CXX )
-if( UNIX )
+
+if( UNIX AND NOT USE_ONEAPI )
   enable_language( Fortran )
 endif( )
 
-# This finds the rocm-cmake project, and installs it if not found
-# rocm-cmake contains common cmake code for rocm projects to help setup and install
-set( PROJECT_EXTERN_DIR ${CMAKE_CURRENT_BINARY_DIR}/extern )
-find_package( ROCM 0.7.3 CONFIG QUIET PATHS /opt/rocm )
-if( NOT ROCM_FOUND )
-  set(rocm_cmake_tag "master" CACHE STRING "rocm-cmake tag to download")
-  set(rocm_cmake_url "https://github.com/RadeonOpenCompute/rocm-cmake/archive/${rocm_cmake_tag}.zip")
-  set(rocm_cmake_path "${PROJECT_EXTERN_DIR}/rocm-cmake-${rocm_cmake_tag}")
-  set(rocm_cmake_archive "${rocm_cmake_path}.zip")
-  file(DOWNLOAD "${rocm_cmake_url}" "${rocm_cmake_archive}" STATUS status LOG log)
+if (NOT USE_ONEAPI)
+  # This finds the rocm-cmake project, and installs it if not found
+  # rocm-cmake contains common cmake code for rocm projects to help setup and install
+  set( PROJECT_EXTERN_DIR ${CMAKE_CURRENT_BINARY_DIR}/extern )
+  find_package( ROCM 0.7.3 CONFIG QUIET PATHS /opt/rocm )
+  if( NOT ROCM_FOUND )
+    set(rocm_cmake_tag "master" CACHE STRING "rocm-cmake tag to download")
+    set(rocm_cmake_url "https://github.com/RadeonOpenCompute/rocm-cmake/archive/${rocm_cmake_tag}.zip")
+    set(rocm_cmake_path "${PROJECT_EXTERN_DIR}/rocm-cmake-${rocm_cmake_tag}")
+    set(rocm_cmake_archive "${rocm_cmake_path}.zip")
+    file(DOWNLOAD "${rocm_cmake_url}" "${rocm_cmake_archive}" STATUS status LOG log)
 
-  list(GET status 0 status_code)
-  list(GET status 1 status_string)
+    list(GET status 0 status_code)
+    list(GET status 1 status_string)
 
-  if(status_code EQUAL 0)
-    message(STATUS "downloading... done")
-  else()
-    message(FATAL_ERROR "error: downloading\n'${rocm_cmake_url}' failed
-    status_code: ${status_code}
-    status_string: ${status_string}
-    log: ${log}\n")
-  endif()
+    if(status_code EQUAL 0)
+      message(STATUS "downloading... done")
+    else()
+      message(FATAL_ERROR "error: downloading\n'${rocm_cmake_url}' failed
+      status_code: ${status_code}
+      status_string: ${status_string}
+      log: ${log}\n")
+    endif()
 
-  execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzvf "${rocm_cmake_archive}"
-    WORKING_DIRECTORY ${PROJECT_EXTERN_DIR})
-  execute_process( COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${PROJECT_EXTERN_DIR}/rocm-cmake .
-    WORKING_DIRECTORY ${PROJECT_EXTERN_DIR}/rocm-cmake-${rocm_cmake_tag} )
-  execute_process( COMMAND ${CMAKE_COMMAND} --build rocm-cmake-${rocm_cmake_tag} --target install
-    WORKING_DIRECTORY ${PROJECT_EXTERN_DIR})
+    execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzvf "${rocm_cmake_archive}"
+      WORKING_DIRECTORY ${PROJECT_EXTERN_DIR})
+    execute_process( COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${PROJECT_EXTERN_DIR}/rocm-cmake .
+      WORKING_DIRECTORY ${PROJECT_EXTERN_DIR}/rocm-cmake-${rocm_cmake_tag} )
+    execute_process( COMMAND ${CMAKE_COMMAND} --build rocm-cmake-${rocm_cmake_tag} --target install
+      WORKING_DIRECTORY ${PROJECT_EXTERN_DIR})
 
-  find_package( ROCM 0.7.3 REQUIRED CONFIG PATHS ${PROJECT_EXTERN_DIR}/rocm-cmake )
+    find_package( ROCM 0.7.3 REQUIRED CONFIG PATHS ${PROJECT_EXTERN_DIR}/rocm-cmake )
+  endif( )
+
+  include( ROCMSetupVersion )
+  include( ROCMCreatePackage )
+  include( ROCMInstallTargets )
+  include( ROCMPackageConfigHelpers )
+  include( ROCMInstallSymlinks )
+  include( ROCMClients )
+  include( ROCMHeaderWrapper )
+
+  set ( VERSION_STRING "1.8.0" )
+  rocm_setup_version( VERSION ${VERSION_STRING} )
 endif( )
-
-include( ROCMSetupVersion )
-include( ROCMCreatePackage )
-include( ROCMInstallTargets )
-include( ROCMPackageConfigHelpers )
-include( ROCMInstallSymlinks )
-include( ROCMClients )
-include( ROCMHeaderWrapper )
-
-set ( VERSION_STRING "1.8.0" )
-rocm_setup_version( VERSION ${VERSION_STRING} )
 
 if( NOT DEFINED ENV{HIP_PATH})
     set( HIP_PATH "/opt/rocm/hip" )
@@ -156,17 +159,19 @@ if(BUILD_CODE_COVERAGE)
   add_link_options(--coverage)
 endif()
 
-include(CMakeDependentOption)
-cmake_dependent_option(BUILD_FILE_REORG_BACKWARD_COMPATIBILITY
-  "Build with file/folder reorg backward compatibility enabled" ON "NOT WIN32" OFF)
-if(BUILD_FILE_REORG_BACKWARD_COMPATIBILITY)
-  rocm_wrap_header_dir(
-    ${CMAKE_SOURCE_DIR}/library/include
-    PATTERNS "*.h"
-    GUARDS SYMLINK WRAPPER
-    WRAPPER_LOCATIONS ${CMAKE_INSTALL_INCLUDEDIR}
-  )
-endif()
+if (NOT USE_ONEAPI)
+  include(CMakeDependentOption)
+  cmake_dependent_option(BUILD_FILE_REORG_BACKWARD_COMPATIBILITY
+    "Build with file/folder reorg backward compatibility enabled" ON "NOT WIN32" OFF)
+  if(BUILD_FILE_REORG_BACKWARD_COMPATIBILITY)
+    rocm_wrap_header_dir(
+      ${CMAKE_SOURCE_DIR}/library/include
+      PATTERNS "*.h"
+      GUARDS SYMLINK WRAPPER
+      WRAPPER_LOCATIONS ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+  endif()
+endif( )
 
 if( WIN32 )
   add_compile_definitions(
@@ -210,7 +215,7 @@ if( BUILD_CLIENTS_SAMPLES OR BUILD_CLIENTS_TESTS OR BUILD_CLIENTS_BENCHMARKS )
 endif( )
 
 # Package specific CPACK vars
-if( NOT USE_CUDA )
+if( NOT USE_CUDA AND NOT USE_ONEAPI)
   rocm_package_add_dependencies(DEPENDS "rocblas >= 2.48.0" "rocsolver >= 3.22.0")
 endif( )
 
@@ -243,13 +248,15 @@ endif( )
 
 set( HIPSOLVER_CONFIG_DIR "\${CPACK_PACKAGING_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}" CACHE PATH "Path placed into ldconfig file" )
 
-rocm_create_package(
-    NAME ${package_name}
-    DESCRIPTION "Radeon Open Compute LAPACK marshalling library"
-    MAINTAINER "hipSOLVER Maintainer <hipsolver-maintainer@amd.com>"
-    LDCONFIG
-    LDCONFIG_DIR ${HIPSOLVER_CONFIG_DIR}
-)
+if (NOT USE_ONEAPI)
+  rocm_create_package(
+      NAME ${package_name}
+      DESCRIPTION "Radeon Open Compute LAPACK marshalling library"
+      MAINTAINER "hipSOLVER Maintainer <hipsolver-maintainer@amd.com>"
+      LDCONFIG
+      LDCONFIG_DIR ${HIPSOLVER_CONFIG_DIR}
+  )
+endif()
 
 # ADDITIONAL TARGETS FOR CODE COVERAGE
 if(BUILD_CODE_COVERAGE)
