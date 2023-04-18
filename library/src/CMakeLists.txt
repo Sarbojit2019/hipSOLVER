@@ -35,6 +35,27 @@ function( prepend_path prefix source_list_of_files return_list_of_files )
   set( ${return_list_of_files} ${new_list} PARENT_SCOPE )
 endfunction( )
 
+if (USE_ONEAPI)
+find_program(DPCPP_EXECUTABLE NAMES dpcpp
+	HINTS $ENV{CMPLR_ROOT}/linux/bin $ENV{ONEAPI_ROOT}/compiler/latest/linux/bin
+	PATHS /opt/intel/oneapi/compiler/latest/linux/bin)
+
+if(DPCPP_EXECUTABLE)
+	get_filename_component(DPCPP_CORE_BINDIR ${DPCPP_EXECUTABLE} DIRECTORY)
+	get_filename_component(DPCPP_CORE_LIBDIR "${DPCPP_CORE_BINDIR}/../lib" ABSOLUTE)
+  get_filename_component(DPCPP_INCLUDE_DIR "${DPCPP_CORE_BINDIR}/../include" ABSOLUTE)
+endif()
+
+message(STATUS "DPCPP_CORE_BINDIR: ${DPCPP_CORE_BINDIR}")
+message(STATUS "DPCPP_CORE_LIBDIR: ${DPCPP_CORE_LIBDIR}")
+message(STATUS "DPCPP_INCLUDE_DIR: ${DPCPP_INCLUDE_DIR}")
+
+set(MKL_THREADING sequential)
+find_package(MKL CONFIG
+	HINTS $ENV{MKLROOT}/lib/cmake/mkl  $ENV{ONEAPI_ROOT}/mkl/latest/lib/cmake/mkl
+	PATHS /opt/intel/oneapi/mkl/latest/lib/cmake/mkl)
+endif()
+
 # ########################################################################
 # Main
 # ########################################################################
@@ -48,6 +69,7 @@ if( NOT USE_CUDA )
       "${CMAKE_CURRENT_SOURCE_DIR}/common/hipsolver_compat_common.cpp"
     )
   else()
+    add_subdirectory(oneapi_detail)
     set( hipsolver_source
       "${CMAKE_CURRENT_SOURCE_DIR}/oneapi_detail/hipsolver.cpp"
     )
@@ -137,7 +159,7 @@ else( )
 endif( )
 
 if (USE_ONEAPI)
-  target_link_libraries( hipsolver PRIVATE hip::host )
+  target_link_libraries( hipsolver PRIVATE hip::host sycl_solver_wrapper )
 
   # External header includes included as system files
   target_include_directories( hipsolver

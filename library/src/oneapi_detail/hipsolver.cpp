@@ -1,31 +1,58 @@
+#include <hip/hip_interop.h>
 #include "hipsolver.h"
 #include "exceptions.hpp"
+
+#include <unordered_set>
+#include "deps/sycl_solver.h"
+
+std::unordered_set<hipsolverHandle_t*> solverHandleTbl;
+// local functions
+static hipsolverStatus_t updateSyclHandleToCrrStream(hipStream_t stream, syclHandle_t syclHandle)
+{
+    // Obtain the handles from HIP backend.
+    unsigned long bkHandles[4];
+    int           nHandles = 4;
+    hipGetBackendNativeHandles((uintptr_t)stream, bkHandles, &nHandles);
+
+    auto backendName = hipGetBackendName();
+
+    //Fix-Me : Should Sycl know hipStream_t??
+    sycl_set_hipstream(syclHandle, bkHandles, nHandles, stream, backendName);
+    return HIPSOLVER_STATUS_SUCCESS;
+}
 
 hipsolverStatus_t hipsolverCreate(hipsolverHandle_t* handle)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    // create syclHandle
+    sycl_create_handle((syclHandle_t*)handle);
+
+    hipStream_t nullStream = NULL; // default or null stream
+    // set stream to default NULL stream
+    auto status = updateSyclHandleToCrrStream(nullStream, (syclHandle_t)*handle);
+    solverHandleTbl.insert(handle);
+    return status;
 }
 catch(...)
 {
-	return exception2hip_status();
+    return exception2hip_status();
 }
 
 hipsolverStatus_t hipsolverDestroy(hipsolverHandle_t handle)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    return sycl_destroy_handle((syclHandle_t)handle);
 }
 catch(...)
 {
-	return exception2hip_status();
+    return exception2hip_status();
 }
 
 hipsolverStatus_t hipsolverSetStream(hipsolverHandle_t handle,
-                                                      hipStream_t       streamId)
+                                     hipStream_t       streamId)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    return updateSyclHandleToCrrStream(streamId, (syclHandle_t)handle);
 }
 catch(...)
 {
@@ -33,10 +60,14 @@ catch(...)
 }
 
 hipsolverStatus_t hipsolverGetStream(hipsolverHandle_t handle,
-                                                      hipStream_t*      streamId)
+                                     hipStream_t*      streamId)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(handle == nullptr)
+    {
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    }
+    return sycl_get_hipstream((syclHandle_t)handle, streamId);
 }
 catch(...)
 {

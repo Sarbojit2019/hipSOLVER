@@ -22,8 +22,14 @@
 
 cmake_minimum_required( VERSION 3.7 )
 
-# We use C++14 features, this will add compile option: -std=c++14
-set( CMAKE_CXX_STANDARD 14 )
+# We will add compile option: -std=c++17/c++14
+if (USE_ONEAPI)
+  # ONEAPI uses C++17 features
+  set( CMAKE_CXX_STANDARD 17 )
+else()
+  # Others use C++14 features
+  set( CMAKE_CXX_STANDARD 14 )
+endif()
 
 # Consider removing this in the future
 # This should appear before the project command, because it does not use FORCE
