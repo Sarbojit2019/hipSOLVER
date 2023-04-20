@@ -177,3 +177,10 @@ hipsolverStatus_t sycl_get_hipstream(syclHandle_t handle, hipStream_t* pStream){
   *pStream = handle->hip_stream;
   return HIPSOLVER_STATUS_SUCCESS;
 }
+
+syclQueue_t sycl_get_queue(syclHandle_t handle){
+  if (handle == nullptr)
+    return nullptr;
+
+  return handle->queue;
+}
