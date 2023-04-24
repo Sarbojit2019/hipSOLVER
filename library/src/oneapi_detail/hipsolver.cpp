@@ -6,6 +6,23 @@
 #include "deps/sycl_solver.h"
 
 std::unordered_set<hipsolverHandle_t*> solverHandleTbl;
+
+inline onemklJob convert(hipsolverEigMode_t job) {
+  switch(job) {
+    case HIPSOLVER_EIG_MODE_NOVECTOR: return ONEMKL_JOB_NOVEC;
+    case HIPSOLVER_EIG_MODE_VECTOR: return ONEMKL_JOB_VEC;
+  }
+}
+
+inline onemklUplo convert(hipsolverFillMode_t val) {
+    switch(val) {
+        case HIPSOLVER_FILL_MODE_UPPER:
+            return ONEMKL_UPLO_UPPER;
+        case HIPSOLVER_FILL_MODE_LOWER:
+            return ONEMKL_UPLO_LOWER;
+    }
+}
+
 // local functions
 static hipsolverStatus_t updateSyclHandleToCrrStream(hipStream_t stream, syclHandle_t syclHandle)
 {
@@ -3215,7 +3232,14 @@ hipsolverStatus_t hipsolverSsyevd_bufferSize(hipsolverHandle_t   handle,
                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || D == nullptr || lwork == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Ssyevd_ScPadSz(queue, convert(jobz), convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3232,7 +3256,14 @@ hipsolverStatus_t hipsolverDsyevd_bufferSize(hipsolverHandle_t   handle,
                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || D == nullptr || lwork == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Dsyevd_ScPadSz(queue, convert(jobz), convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3249,7 +3280,14 @@ hipsolverStatus_t hipsolverCheevd_bufferSize(hipsolverHandle_t   handle,
                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || D == nullptr || lwork == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Cheevd_ScPadSz(queue, convert(jobz), convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3266,7 +3304,14 @@ hipsolverStatus_t hipsolverZheevd_bufferSize(hipsolverHandle_t   handle,
                                             int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || D == nullptr || lwork == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Zheevd_ScPadSz(queue, convert(jobz), convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3285,7 +3330,14 @@ hipsolverStatus_t hipsolverSsyevd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(A == nullptr || D == nullptr || work == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    hipsolverSsyevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
+    onemkl_Ssyevd(queue, convert(jobz), convert(uplo), n, A, lda, D, work, lwork);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3304,7 +3356,14 @@ hipsolverStatus_t hipsolverDsyevd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(A == nullptr || D == nullptr || work == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    hipsolverDsyevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
+    onemkl_Dsyevd(queue, convert(jobz), convert(uplo), n, A, lda, D, work, lwork);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3323,7 +3382,14 @@ hipsolverStatus_t hipsolverCheevd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(A == nullptr || D == nullptr || work == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    hipsolverCheevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
+    onemkl_Cheevd(queue, convert(jobz), convert(uplo), n, (float _Complex*)A, lda, D, (float _Complex*)work, lwork);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3342,7 +3408,14 @@ hipsolverStatus_t hipsolverZheevd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(A == nullptr || D == nullptr || work == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    hipsolverZheevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
+    onemkl_Zheevd(queue, convert(jobz), convert(uplo), n, (double _Complex*)A, lda, D, (double _Complex*)work, lwork);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {

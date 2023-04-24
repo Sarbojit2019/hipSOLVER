@@ -2,6 +2,32 @@
 #include <oneapi/mkl.hpp>
 #include "sycl_solver.h"
 
+// local functions
+oneapi::mkl::jobsvd convert(signed char j) {
+  switch(j) {
+    case 'N': return oneapi::mkl::jobsvd::N;
+    case 'A': return oneapi::mkl::jobsvd::A;
+    case 'S': return oneapi::mkl::jobsvd::S;
+    case 'O': return oneapi::mkl::jobsvd::O;
+    default : return oneapi::mkl::jobsvd::N; // need to test
+  }
+}
+
+oneapi::mkl::job convert(onemklJob j) {
+  switch(j) {
+    case ONEMKL_JOB_NOVEC: return oneapi::mkl::job::novec;
+    case ONEMKL_JOB_VEC: return oneapi::mkl::job::vec;
+  }
+}
+
+oneapi::mkl::uplo convert(onemklUplo ul) {
+  switch(ul) {
+    case ONEMKL_UPLO_LOWER: return oneapi::mkl::uplo::lower;
+    case ONEMKL_UPLO_UPPER: return oneapi::mkl::uplo::upper;
+  }
+}
+
+
 extern "C" int64_t onemkl_Sgebrd_ScPadSz(syclQueue_t device_queue, int64_t m, int64_t n, int64_t lda){
   ONEMKL_TRY()
   auto size = oneapi::mkl::lapack::gebrd_scratchpad_size<float>(device_queue->val, m, n, lda);
@@ -66,16 +92,6 @@ extern "C" void onemkl_Zgebrd(syclQueue_t device_queue, int64_t m, int64_t n, do
   ONEMKL_CATCH("Zgebrd")
 }
 
-oneapi::mkl::jobsvd convert(signed char j) {
-  switch(j) {
-    case 'N': return oneapi::mkl::jobsvd::N;
-    case 'A': return oneapi::mkl::jobsvd::A;
-    case 'S': return oneapi::mkl::jobsvd::S;
-    case 'O': return oneapi::mkl::jobsvd::O;
-    default : return oneapi::mkl::jobsvd::N; // need to test
-  }
-}
-
 extern "C" int64_t onemkl_Sgesvd_ScPadSz(syclQueue_t device_queue, signed char jobu, signed char jobvt, int64_t m, int64_t n,
                              int64_t lda, int64_t ldu, int64_t ldvt){
   ONEMKL_TRY()
@@ -131,4 +147,62 @@ extern "C" void onemkl_Zgesvd(syclQueue_t device_queue, signed char jobu, signed
                                          S, reinterpret_cast<std::complex<double>*>(U), ldu, reinterpret_cast<std::complex<double>*>(V), ldv,
                                          reinterpret_cast<std::complex<double>*>(scratchpad), scratchpad_size);
   ONEMKL_CATCH("Zgesvd")
+}
+
+extern "C" int64_t onemkl_Ssyevd_ScPadSz(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, int64_t lda) {
+ONEMKL_TRY()
+auto size = oneapi::mkl::lapack::syevd_scratchpad_size<float>(device_queue->val, convert(job), convert(uplo), n, lda);
+return size;
+ONEMKL_CATCH("Ssyevd_scratchpad")
+}
+
+extern "C" int64_t onemkl_Dsyevd_ScPadSz(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, int64_t lda) {
+ONEMKL_TRY()
+auto size = oneapi::mkl::lapack::syevd_scratchpad_size<double>(device_queue->val, convert(job), convert(uplo), n, lda);
+return size;
+ONEMKL_CATCH("Dsyevd_scratchpad")
+}
+
+extern "C" void onemkl_Ssyevd(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, float* A, int64_t lda, float* w,
+                   float* scratchpad, int64_t scratchpad_size){
+  ONEMKL_TRY()
+  auto event = oneapi::mkl::lapack::syevd(device_queue->val, convert(job), convert(uplo), n, A, lda, w, scratchpad, scratchpad_size);
+  ONEMKL_CATCH("Ssyevd")
+}
+
+extern "C" void onemkl_Dsyevd(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, double* A, int64_t lda, double* w,
+                   double* scratchpad, int64_t scratchpad_size){
+  ONEMKL_TRY()
+  auto event = oneapi::mkl::lapack::syevd(device_queue->val, convert(job), convert(uplo), n, A, lda, w, scratchpad, scratchpad_size);
+  ONEMKL_CATCH("Dsyevd")
+}
+
+extern "C" int64_t onemkl_Cheevd_ScPadSz(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, int64_t lda) {
+ONEMKL_TRY()
+auto size = oneapi::mkl::lapack::heevd_scratchpad_size<std::complex<float>>(device_queue->val, convert(job), convert(uplo), n, lda);
+return size;
+ONEMKL_CATCH("Csyevd_scratchpad")
+}
+
+extern "C" int64_t onemkl_Zheevd_ScPadSz(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, int64_t lda) {
+ONEMKL_TRY()
+auto size = oneapi::mkl::lapack::heevd_scratchpad_size<std::complex<double>>(device_queue->val, convert(job), convert(uplo), n, lda);
+return size;
+ONEMKL_CATCH("Zsyevd_scratchpad")
+}
+
+extern "C" void onemkl_Cheevd(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, float _Complex* A, int64_t lda, float* w,
+                   float _Complex* scratchpad, int64_t scratchpad_size){
+  ONEMKL_TRY()
+  auto event = oneapi::mkl::lapack::heevd(device_queue->val, convert(job), convert(uplo), n,
+                  reinterpret_cast<std::complex<float>*>(A), lda, w, reinterpret_cast<std::complex<float>*>(scratchpad), scratchpad_size);
+  ONEMKL_CATCH("Cheevd")
+}
+
+extern "C" void onemkl_Zheevd(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, double _Complex* A, int64_t lda, double* w,
+                  double _Complex* scratchpad, int64_t scratchpad_size){
+  ONEMKL_TRY()
+  auto event = oneapi::mkl::lapack::heevd(device_queue->val, convert(job), convert(uplo), n,
+                  reinterpret_cast<std::complex<double>*>(A), lda, w, reinterpret_cast<std::complex<double>*>(scratchpad), scratchpad_size);
+  ONEMKL_CATCH("Zheevd")
 }

@@ -14,6 +14,16 @@ extern "C" {
 
 typedef struct syclHandle* syclHandle_t;
 
+typedef enum {
+  ONEMKL_UPLO_UPPER,
+  ONEMKL_UPLO_LOWER
+} onemklUplo;
+
+typedef enum {
+  ONEMKL_JOB_NOVEC,
+  ONEMKL_JOB_VEC
+} onemklJob;
+
 // helper functions
 hipsolverStatus_t sycl_create_handle(syclHandle_t* handle);
 hipsolverStatus_t sycl_destroy_handle(syclHandle_t handle);
@@ -57,6 +67,18 @@ void onemkl_Cgesvd(syclQueue_t device_queue, signed char jobu, signed char jobvt
                     float* S, float _Complex* U, int64_t ldu, float _Complex* V, int64_t ldv, float _Complex* scratchpad, int64_t scratchpad_size);
 void onemkl_Zgesvd(syclQueue_t device_queue, signed char jobu, signed char jobvt, int64_t m, int64_t n, double _Complex* A, int64_t lda,
                     double* S, double _Complex* U, int64_t ldu, double _Complex* V, int64_t ldv, double _Complex* scratchpad, int64_t scratchpad_size);
+
+int64_t onemkl_Ssyevd_ScPadSz(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, int64_t lda);
+int64_t onemkl_Dsyevd_ScPadSz(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, int64_t lda);
+void onemkl_Ssyevd(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, float* A, int64_t lda, float* w, float* scratchpad, int64_t scratchpad_size);
+void onemkl_Dsyevd(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, double* A, int64_t lda, double* w, double* scratchpad, int64_t scratchpad_size);
+
+int64_t onemkl_Cheevd_ScPadSz(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, int64_t lda);
+int64_t onemkl_Zheevd_ScPadSz(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, int64_t lda);
+void onemkl_Cheevd(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, float _Complex* A, int64_t lda, float* w,
+                   float _Complex* scratchpad, int64_t scratchpad_size);
+void onemkl_Zheevd(syclQueue_t device_queue, onemklJob job, onemklUplo uplo, int64_t n, double _Complex* A, int64_t lda, double* w,
+                  double _Complex* scratchpad, int64_t scratchpad_size);
 #ifdef __cplusplus
 }
 #endif
