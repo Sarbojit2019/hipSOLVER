@@ -15,6 +15,16 @@ extern "C" {
 typedef struct syclHandle* syclHandle_t;
 
 typedef enum {
+  ONEMKL_GEN_Q,
+  ONEMKL_GEN_P
+} onemklGen;
+
+typedef enum {
+  ONEMKL_SIDE_LEFT,
+  ONEMKL_SIDE_RIGHT
+} onemklSide;
+
+typedef enum {
   ONEMKL_UPLO_UPPER,
   ONEMKL_UPLO_LOWER
 } onemklUplo;
@@ -23,6 +33,12 @@ typedef enum {
   ONEMKL_JOB_NOVEC,
   ONEMKL_JOB_VEC
 } onemklJob;
+
+typedef enum {
+    ONEMKL_TRANSPOSE_NONTRANS,
+    ONEMKL_TRANSPOSE_TRANS,
+    ONEMLK_TRANSPOSE_CONJTRANS
+} onemklTranspose;
 
 // helper functions
 hipsolverStatus_t sycl_create_handle(syclHandle_t* handle);
@@ -36,6 +52,68 @@ hipsolverStatus_t sycl_get_hipstream(syclHandle_t handle, hipStream_t* pStream);
 syclQueue_t sycl_get_queue(syclHandle_t handle);
 
 // solver functions
+//orgbr & ungbr
+int64_t onemkl_Sorgbr_ScPadSz(syclQueue_t device_queue,onemklGen gen, int64_t m, int64_t n, int64_t k, int64_t lda);
+int64_t onemkl_Dorgbr_ScPadSz(syclQueue_t device_queue,onemklGen gen, int64_t m, int64_t n, int64_t k, int64_t lda);
+int64_t onemkl_Cungbr_ScPadSz(syclQueue_t device_queue,onemklGen gen, int64_t m, int64_t n, int64_t k, int64_t lda);
+int64_t onemkl_Zungbr_ScPadSz(syclQueue_t device_queue,onemklGen gen, int64_t m, int64_t n, int64_t k, int64_t lda);
+void onemkl_Sorgbr(syclQueue_t device_queue, onemklGen gen, int64_t m, int64_t n, int64_t k, float* A, int64_t lda,
+                   float* tua, float* scratchpad, int64_t scratchpad_size);
+void onemkl_Dorgbr(syclQueue_t device_queue, onemklGen gen, int64_t m, int64_t n, int64_t k, double* A, int64_t lda,
+                   double* tua, double* scratchpad, int64_t scratchpad_size);
+void onemkl_Cungbr(syclQueue_t device_queue, onemklGen gen, int64_t m, int64_t n, int64_t k, float _Complex* A, int64_t lda,
+                   float _Complex* tua, float _Complex* scratchpad, int64_t scratchpad_size);
+void onemkl_Zungbr(syclQueue_t device_queue, onemklGen gen, int64_t m, int64_t n, int64_t k, double _Complex* A, int64_t lda,
+                   double _Complex* tua, double _Complex* scratchpad, int64_t scratchpad_size);
+
+// orgqr/ungqr
+int64_t onemkl_Sorgqr_ScPadSz(syclQueue_t device_queue, int64_t m, int64_t n, int64_t k, int64_t lda);
+int64_t onemkl_Dorgqr_ScPadSz(syclQueue_t device_queue, int64_t m, int64_t n, int64_t k, int64_t lda);
+int64_t onemkl_Cungqr_ScPadSz(syclQueue_t device_queue, int64_t m, int64_t n, int64_t k, int64_t lda);
+int64_t onemkl_Zungqr_ScPadSz(syclQueue_t device_queue, int64_t m, int64_t n, int64_t k, int64_t lda);
+void onemkl_Sorgqr(syclQueue_t device_queue, int64_t m, int64_t n, int64_t k, float* A, int64_t lda,
+                   float* tua, float* scratchpad, int64_t scratchpad_size);
+void onemkl_Dorgqr(syclQueue_t device_queue, int64_t m, int64_t n, int64_t k, double* A, int64_t lda,
+                   double* tua, double* scratchpad, int64_t scratchpad_size);
+void onemkl_Cungqr(syclQueue_t device_queue, int64_t m, int64_t n, int64_t k, float _Complex* A, int64_t lda,
+                   float _Complex* tua, float _Complex* scratchpad, int64_t scratchpad_size);
+void onemkl_Zungqr(syclQueue_t device_queue, int64_t m, int64_t n, int64_t k, double _Complex* A, int64_t lda,
+                   double _Complex* tua, double _Complex* scratchpad, int64_t scratchpad_size);
+
+// orgtr/ungtr
+int64_t onemkl_Sorgtr_ScPadSz(syclQueue_t device_queue, onemklUplo uplo, int64_t n, int64_t lda);
+int64_t onemkl_Dorgtr_ScPadSz(syclQueue_t device_queue, onemklUplo uplo, int64_t n, int64_t lda);
+int64_t onemkl_Cungtr_ScPadSz(syclQueue_t device_queue, onemklUplo uplo, int64_t n, int64_t lda);
+int64_t onemkl_Zungtr_ScPadSz(syclQueue_t device_queue, onemklUplo uplo, int64_t n, int64_t lda);
+void onemkl_Sorgtr(syclQueue_t device_queue, onemklUplo uplo, int64_t n, float* A, int64_t lda,
+                   float* tua, float* scratchpad, int64_t scratchpad_size);
+void onemkl_Dorgtr(syclQueue_t device_queue, onemklUplo uplo, int64_t n, double* A, int64_t lda,
+                   double* tua, double* scratchpad, int64_t scratchpad_size);
+void onemkl_Cungtr(syclQueue_t device_queue, onemklUplo uplo, int64_t n, float _Complex* A, int64_t lda,
+                   float _Complex* tua, float _Complex* scratchpad, int64_t scratchpad_size);
+void onemkl_Zungtr(syclQueue_t device_queue, onemklUplo uplo, int64_t n, double _Complex* A, int64_t lda,
+                   double _Complex* tua, double _Complex* scratchpad, int64_t scratchpad_size);
+
+// ormqr/unmqr
+int64_t onemkl_Sormqr_ScPadSz(syclQueue_t device_queue, onemklSide side, onemklTranspose trans, int64_t m, int64_t n, int64_t k,
+                   int64_t lda, int64_t ldc);
+int64_t onemkl_Sormqr_DcPadSz(syclQueue_t device_queue, onemklSide side, onemklTranspose trans, int64_t m, int64_t n, int64_t k,
+                   int64_t lda, int64_t ldc);
+int64_t onemkl_Cunmqr_ScPadSz(syclQueue_t device_queue, onemklSide side, onemklTranspose trans, int64_t m, int64_t n, int64_t k,
+                   int64_t lda, int64_t ldc);
+int64_t onemkl_Zunmqr_ScPadSz(syclQueue_t device_queue, onemklSide side, onemklTranspose trans, int64_t m, int64_t n, int64_t k,
+                   int64_t lda, int64_t ldc);
+void onemkl_Sormqr(syclQueue_t device_queue, onemklSide side, onemklTranspose trans, int64_t m, int64_t n, int64_t k,
+                   float* A, int64_t lda, float* tua, float* C, int64_t ldc, float* scratchpad, int64_t scratchpad_size);
+void onemkl_Dormqr(syclQueue_t device_queue, onemklSide side, onemklTranspose trans, int64_t m, int64_t n, int64_t k,
+                   double* A, int64_t lda, double* tua, double* C, int64_t ldc, double* scratchpad, int64_t scratchpad_size);
+void onemkl_Cunmqr(syclQueue_t device_queue, onemklSide side, onemklTranspose trans, int64_t m, int64_t n, int64_t k,
+                   float _Complex* A, int64_t lda, float _Complex* tua, float _Complex* C, int64_t ldc,
+                   float _Complex* scratchpad, int64_t scratchpad_size);
+void onemkl_Zunmqr(syclQueue_t device_queue, onemklSide side, onemklTranspose trans, int64_t m, int64_t n, int64_t k,
+                   double _Complex* A, int64_t lda, double _Complex* tua, double _Complex* C, int64_t ldc,
+                   double _Complex* scratchpad, int64_t scratchpad_size);
+
 int64_t onemkl_Sgebrd_ScPadSz(syclQueue_t device_queue, int64_t m, int64_t n, int64_t lda);
 int64_t onemkl_Dgebrd_ScPadSz(syclQueue_t device_queue, int64_t m, int64_t n, int64_t lda);
 int64_t onemkl_Cgebrd_ScPadSz(syclQueue_t device_queue, int64_t m, int64_t n, int64_t lda);
