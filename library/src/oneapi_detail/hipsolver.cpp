@@ -4,10 +4,35 @@
 
 #include <unordered_set>
 #include "deps/sycl_solver.h"
-
+#include <iostream>
 std::unordered_set<hipsolverHandle_t*> solverHandleTbl;
 
+bool isvalid(hipsolverEigType_t t) {
+    if (t == HIPSOLVER_EIG_TYPE_1 || t == HIPSOLVER_EIG_TYPE_2 || t == HIPSOLVER_EIG_TYPE_3)
+        return true;
+    return false;
+}
+inline int64_t convert(hipsolverEigType_t t) {
+  switch(t){
+    case HIPSOLVER_EIG_TYPE_1:
+      return 1;
+    case HIPSOLVER_EIG_TYPE_2:
+      return 2;
+    case HIPSOLVER_EIG_TYPE_3:
+      return 3;
+    default:
+      return -1; // error: Never come here
+  }
+}
+
+bool isValidMode(hipsolverSideMode_t s) {
+    if (s != HIPSOLVER_SIDE_LEFT && s != HIPSOLVER_SIDE_RIGHT){
+        return false;
+    }
+    return true;
+}
 inline onemklGen convertToGen(hipsolverSideMode_t s) {
+    std::cout<<"hipsolverSideMode_t :"<<s<<std::endl;
     switch(s){
         case HIPSOLVER_SIDE_LEFT: return ONEMKL_GEN_Q;
         case HIPSOLVER_SIDE_RIGHT: return ONEMKL_GEN_P;
@@ -20,7 +45,11 @@ inline onemklSide convert(hipsolverSideMode_t s) {
         case HIPSOLVER_SIDE_RIGHT: return ONEMKL_SIDE_RIGHT;
     }
 }
-
+bool isvalid(hipsolverEigMode_t j){
+    if (j == HIPSOLVER_EIG_MODE_NOVECTOR || j == HIPSOLVER_EIG_MODE_VECTOR)
+        return true;
+    return false;
+}
 inline onemklJob convert(hipsolverEigMode_t job) {
   switch(job) {
     case HIPSOLVER_EIG_MODE_NOVECTOR: return ONEMKL_JOB_NOVEC;
@@ -28,6 +57,11 @@ inline onemklJob convert(hipsolverEigMode_t job) {
   }
 }
 
+bool isvalid(hipsolverFillMode_t v){
+    if (v == HIPSOLVER_FILL_MODE_UPPER || v == HIPSOLVER_FILL_MODE_LOWER)
+        return true;
+    return false;
+}
 inline onemklUplo convert(hipsolverFillMode_t val) {
     switch(val) {
         case HIPSOLVER_FILL_MODE_UPPER:
@@ -36,7 +70,11 @@ inline onemklUplo convert(hipsolverFillMode_t val) {
             return ONEMKL_UPLO_LOWER;
     }
 }
-
+bool isvalid(hipsolverOperation_t t){
+    if (t == HIPSOLVER_OP_T || t == HIPSOLVER_OP_C || t == HIPSOLVER_OP_N)
+        return true;
+    return false;
+}
 onemklTranspose convert(hipsolverOperation_t val) {
     switch(val) {
         case HIPSOLVER_OP_T:
@@ -285,12 +323,15 @@ hipsolverStatus_t hipsolverSorgbr_bufferSize(hipsolverHandle_t   handle,
                                             int*                lwork)
 try
 {
+    std::cout<<"handle :"<<handle<<std::endl;
     if(!handle)
         return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isValidMode(side))
+        return HIPSOLVER_STATUS_INVALID_ENUM; 
     if(lwork == nullptr)
         return HIPSOLVER_STATUS_INVALID_VALUE;
     auto queue = sycl_get_queue((syclHandle_t)handle);
-
+    std::cout<<m<<" |"<<n<<" |"<<k<<" |"<<lda<<" |"<<lwork<<std::endl;
     *lwork = (int)onemkl_Sorgbr_ScPadSz(queue, convertToGen(side), m,n,k,lda);
     return HIPSOLVER_STATUS_SUCCESS;
 }
@@ -389,13 +430,21 @@ try
 {
     if(!handle)
         return HIPSOLVER_STATUS_NOT_INITIALIZED;
-    if (A == nullptr || tau == nullptr || work == nullptr) {
+    if (!isValidMode(side))
+        return HIPSOLVER_STATUS_INVALID_ENUM; 
+    if (A == nullptr || tau == nullptr ) {
         return HIPSOLVER_STATUS_INVALID_VALUE;
     }
     lwork = 0;
     hipsolverSorgbr_bufferSize(handle, side, m, n, k, A, lda, tau, &lwork);
+    hipHostMalloc(&work, lwork, 0);
+
+    hipMemset(devInfo, 0, sizeof(int));
+
     auto queue = sycl_get_queue((syclHandle_t)handle);
+    std::cout<<m<<" |"<<n<<" |"<<k<<" |"<<lda<<" |"<<lwork<<std::endl;
     onemkl_Sorgbr(queue, convertToGen(side), m, n, k, A, lda, tau, work, lwork);
+    hipFree(work);
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -591,13 +640,23 @@ try
 {
     if(!handle)
         return HIPSOLVER_STATUS_NOT_INITIALIZED;
-    if (A == nullptr || tau == nullptr || work == nullptr) {
+    if (A == nullptr || tau == nullptr ) {
         return HIPSOLVER_STATUS_INVALID_VALUE;
     }
-    lwork = 0;
-    hipsolverSorgqr_bufferSize(handle, m, n, k, A, lda, tau, &lwork);
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0) {
+        lwork = 0;
+        hipsolverSorgqr_bufferSize(handle, m, n, k, A, lda, tau, &lwork);
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+    hipMemset(devInfo, 0, sizeof(int));
+
     auto queue = sycl_get_queue((syclHandle_t)handle);
     onemkl_Sorgqr(queue, m, n, k, A, lda, tau, work, lwork);
+    if(allocate)
+        hipFree(work);
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -703,6 +762,8 @@ try
 {
     if(!handle)
         return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
     if(lwork == nullptr)
         return HIPSOLVER_STATUS_INVALID_VALUE;
     auto queue = sycl_get_queue((syclHandle_t)handle);
@@ -797,13 +858,22 @@ try
 {
     if(!handle)
         return HIPSOLVER_STATUS_NOT_INITIALIZED;
-    if (A == nullptr || tau == nullptr || work == nullptr) {
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if (A == nullptr || tau == nullptr ) {
         return HIPSOLVER_STATUS_INVALID_VALUE;
     }
     lwork = 0;
-    hipsolverSorgtr_bufferSize(handle, uplo, n, A, lda, tau, &lwork);
+    auto status = hipsolverSorgtr_bufferSize(handle, uplo, n, A, lda, tau, &lwork);
+    if (status != HIPSOLVER_STATUS_SUCCESS){
+        return status;
+    }
+    auto hipStatus = hipHostMalloc(&work, lwork);
+    hipStatus = hipMemset(devInfo, 0, sizeof(int));
+
     auto queue = sycl_get_queue((syclHandle_t)handle);
     onemkl_Sorgtr(queue, convert(uplo), n, A, lda, tau, work, lwork);
+    hipStatus = hipFree(work);
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -909,7 +979,16 @@ hipsolverStatus_t hipsolverSormqr_bufferSize(hipsolverHandle_t    handle,
                                             int*                 lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(trans) || !isValidMode(side))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Sormqr_ScPadSz(queue, convert(side), convert(trans), m, n, k, lda, ldc);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -930,7 +1009,16 @@ hipsolverStatus_t hipsolverDormqr_bufferSize(hipsolverHandle_t    handle,
                                             int*                 lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(trans) || !isValidMode(side))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Dormqr_ScPadSz(queue, convert(side), convert(trans), m, n, k, lda, ldc);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -951,7 +1039,16 @@ hipsolverStatus_t hipsolverCunmqr_bufferSize(hipsolverHandle_t    handle,
                                                               int*                 lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(trans) || !isValidMode(side))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Cunmqr_ScPadSz(queue, convert(side), convert(trans), m, n, k, lda, ldc);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -972,7 +1069,16 @@ hipsolverStatus_t hipsolverZunmqr_bufferSize(hipsolverHandle_t    handle,
                                                               int*                 lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(trans) || !isValidMode(side))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Zunmqr_ScPadSz(queue, convert(side), convert(trans), m, n, k, lda, ldc);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -980,25 +1086,51 @@ catch(...)
 }
 
 hipsolverStatus_t hipsolverSormqr(hipsolverHandle_t    handle,
-                                                   hipsolverSideMode_t  side,
-                                                   hipsolverOperation_t trans,
-                                                   int                  m,
-                                                   int                  n,
-                                                   int                  k,
-                                                   float*               A,
-                                                   int                  lda,
-                                                   float*               tau,
-                                                   float*               C,
-                                                   int                  ldc,
-                                                   float*               work,
-                                                   int                  lwork,
-                                                   int*                 devInfo)
+                                hipsolverSideMode_t  side,
+                                hipsolverOperation_t trans,
+                                int                  m,
+                                int                  n,
+                                int                  k,
+                                float*               A,
+                                int                  lda,
+                                float*               tau,
+                                float*               C,
+                                int                  ldc,
+                                float*               work,
+                                int                  lwork,
+                                int*                 devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isValidMode(side) || !isvalid(trans))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if (A == nullptr || tau == nullptr  || C == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    hipError_t hipStatus;
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = 0;
+        auto status = hipsolverSormqr_bufferSize(handle, side, trans, m, n, k, A, lda, tau, C, ldc, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS){
+            return status;
+        }
+        hipStatus = hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    hipStatus = hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Sormqr(queue, convert(side), convert(trans), m, n, k, A, lda, tau, C, ldc, work, lwork);
+    if (allocate)
+        hipStatus = hipFree(work);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
+    std::cout<<"test error\n";
 	return exception2hip_status();
 }
 
@@ -1018,7 +1150,32 @@ hipsolverStatus_t hipsolverDormqr(hipsolverHandle_t    handle,
                                                    int*                 devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isValidMode(side) || !isvalid(trans))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if (A == nullptr || tau == nullptr  || C == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    hipError_t hipStatus;
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = 0;
+        auto status = hipsolverDormqr_bufferSize(handle, side, trans, m, n, k, A, lda, tau, C, ldc, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS){
+            return status;
+        }
+        hipStatus = hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    hipStatus = hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Dormqr(queue, convert(side), convert(trans), m, n, k, A, lda, tau, C, ldc, work, lwork);
+    if (allocate)
+        hipStatus = hipFree(work);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1041,7 +1198,32 @@ hipsolverStatus_t hipsolverCunmqr(hipsolverHandle_t    handle,
                                                    int*                 devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isValidMode(side) || !isvalid(trans))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if (A == nullptr || tau == nullptr  || C == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    hipError_t hipStatus;
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = 0;
+        auto status = hipsolverCunmqr_bufferSize(handle, side, trans, m, n, k, A, lda, tau, C, ldc, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS){
+            return status;
+        }
+        hipStatus = hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    hipStatus = hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Cunmqr(queue, convert(side), convert(trans), m, n, k, (float _Complex*)A, lda, (float _Complex*)tau, (float _Complex*)C, ldc, (float _Complex*)work, lwork);
+    if (allocate)
+        hipStatus = hipFree(work);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1064,7 +1246,32 @@ hipsolverStatus_t hipsolverZunmqr(hipsolverHandle_t    handle,
                                                    int*                 devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isValidMode(side) || !isvalid(trans))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if (A == nullptr || tau == nullptr  || C == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    hipError_t hipStatus;
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = 0;
+        auto status = hipsolverZunmqr_bufferSize(handle, side, trans, m, n, k, A, lda, tau, C, ldc, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS){
+            return status;
+        }
+        hipStatus = hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    hipStatus = hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Zunmqr(queue, convert(side), convert(trans), m, n, k, (double _Complex*)A, lda, (double _Complex*)tau, (double _Complex*)C, ldc, (double _Complex*)work, lwork);
+    if (allocate)
+        hipStatus = hipFree(work);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1086,7 +1293,16 @@ hipsolverStatus_t hipsolverSormtr_bufferSize(hipsolverHandle_t    handle,
                                                               int*                 lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(trans) || !isValidMode(side) || !isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Sormtr_ScPadSz(queue, convert(side), convert(uplo), convert(trans), m, n, lda, ldc);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1172,7 +1388,32 @@ hipsolverStatus_t hipsolverSormtr(hipsolverHandle_t    handle,
                                                    int*                 devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isValidMode(side) || !isvalid(trans) || !isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if (A == nullptr || tau == nullptr  || C == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    hipError_t hipStatus;
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = 0;
+        auto status = hipsolverSormtr_bufferSize(handle, side, uplo, trans, m, n, A, lda, tau, C, ldc, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS){
+            return status;
+        }
+        hipStatus = hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    hipStatus = hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Sormtr(queue, convert(side), convert(uplo), convert(trans), m, n, A, lda, tau, C, ldc, work, lwork);
+    if (allocate)
+        hipStatus = hipFree(work);
+    return HIPSOLVER_STATUS_SUCCESS;    
 }
 catch(...)
 {
@@ -1282,7 +1523,7 @@ try
         return HIPSOLVER_STATUS_INVALID_VALUE;
 
     auto queue = sycl_get_queue((syclHandle_t)handle);
-    auto size = onemkl_Sgebrd_ScPadSz(queue, m, n, *lwork);
+    auto size = onemkl_Dgebrd_ScPadSz(queue, m, n, *lwork);
     *lwork = (int)size;
     return HIPSOLVER_STATUS_SUCCESS;
 }
@@ -1303,7 +1544,7 @@ try
         return HIPSOLVER_STATUS_INVALID_VALUE;
 
     auto queue = sycl_get_queue((syclHandle_t)handle);
-    auto size = onemkl_Sgebrd_ScPadSz(queue, m, n, *lwork);
+    auto size = onemkl_Cgebrd_ScPadSz(queue, m, n, *lwork);
     *lwork = (int)size;
     return HIPSOLVER_STATUS_SUCCESS;
 }
@@ -1323,7 +1564,7 @@ try
     if(lwork == nullptr)
         return HIPSOLVER_STATUS_INVALID_VALUE;
     auto queue = sycl_get_queue((syclHandle_t)handle);
-    auto size = onemkl_Sgebrd_ScPadSz(queue, m, n, *lwork);
+    auto size = onemkl_Zgebrd_ScPadSz(queue, m, n, *lwork);
     *lwork = (int)size;
     return HIPSOLVER_STATUS_SUCCESS;
 }
@@ -1346,15 +1587,26 @@ hipsolverStatus_t hipsolverSgebrd(hipsolverHandle_t handle,
                                  int*              devInfo)
 try
 {
-    if (A == nullptr || D == nullptr || E == nullptr || tauq == nullptr || taup == nullptr || work == nullptr) {
+    if (!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || D == nullptr || E == nullptr || tauq == nullptr || taup == nullptr ) {
         return HIPSOLVER_STATUS_INVALID_VALUE;
     }
-    lwork = lda;
-    auto status = hipsolverSgebrd_bufferSize(handle, m, n, &lwork);
-    if (status != HIPSOLVER_STATUS_SUCCESS)
-        return status;
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = lda;
+        auto status = hipsolverSgebrd_bufferSize(handle, m, n, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS)
+            return status;
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+    hipMemset(devInfo, 0, sizeof(int));
     auto queue = sycl_get_queue((syclHandle_t)handle);
     onemkl_Sgebrd(queue, m, n, A, lda, D, E, tauq, taup, work, lwork);
+    
+    if (allocate)
+        hipFree(work);
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -1363,28 +1615,37 @@ catch(...)
 }
 
 hipsolverStatus_t hipsolverDgebrd(hipsolverHandle_t handle,
-                                                   int               m,
-                                                   int               n,
-                                                   double*           A,
-                                                   int               lda,
-                                                   double*           D,
-                                                   double*           E,
-                                                   double*           tauq,
-                                                   double*           taup,
-                                                   double*           work,
-                                                   int               lwork,
-                                                   int*              devInfo)
+                                int               m,
+                                int               n,
+                                double*           A,
+                                int               lda,
+                                double*           D,
+                                double*           E,
+                                double*           tauq,
+                                double*           taup,
+                                double*           work,
+                                int               lwork,
+                                int*              devInfo)
 try
 {
-    if (A == nullptr || D == nullptr || E == nullptr || tauq == nullptr || taup == nullptr || work == nullptr) {
+    if (!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || D == nullptr || E == nullptr || tauq == nullptr || taup == nullptr || devInfo == nullptr) {
         return HIPSOLVER_STATUS_INVALID_VALUE;
     }
-    lwork = lda;
-    auto status = hipsolverDgebrd_bufferSize(handle, m, n, &lwork);
-    if (status != HIPSOLVER_STATUS_SUCCESS)
-        return status;
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = lda;
+        auto status = hipsolverDgebrd_bufferSize(handle, m, n, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS)
+            return status;
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+    hipMemset(devInfo, 0, sizeof(int));
     auto queue = sycl_get_queue((syclHandle_t)handle);
     onemkl_Dgebrd(queue, m, n, A, lda, D, E, tauq, taup, work, lwork);
+    if (allocate)
+        hipFree(work);
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -1393,29 +1654,39 @@ catch(...)
 }
 
 hipsolverStatus_t hipsolverCgebrd(hipsolverHandle_t handle,
-                                                   int               m,
-                                                   int               n,
-                                                   hipFloatComplex*  A,
-                                                   int               lda,
-                                                   float*            D,
-                                                   float*            E,
-                                                   hipFloatComplex*  tauq,
-                                                   hipFloatComplex*  taup,
-                                                   hipFloatComplex*  work,
-                                                   int               lwork,
-                                                   int*              devInfo)
+                                int               m,
+                                int               n,
+                                hipFloatComplex*  A,
+                                int               lda,
+                                float*            D,
+                                float*            E,
+                                hipFloatComplex*  tauq,
+                                hipFloatComplex*  taup,
+                                hipFloatComplex*  work,
+                                int               lwork,
+                                int*              devInfo)
 try
 {
-    if (A == nullptr || D == nullptr || E == nullptr || tauq == nullptr || taup == nullptr || work == nullptr) {
+    if (!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || D == nullptr || E == nullptr || tauq == nullptr || taup == nullptr ) {
         return HIPSOLVER_STATUS_INVALID_VALUE;
     }
-    lwork = lda;
-    auto status = hipsolverCgebrd_bufferSize(handle, m, n, &lwork);
-    if (status != HIPSOLVER_STATUS_SUCCESS)
-        return status;
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = lda;
+        auto status = hipsolverCgebrd_bufferSize(handle, m, n, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS)
+            return status;
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+    hipMemset(devInfo, 0, sizeof(int));
+
     auto queue = sycl_get_queue((syclHandle_t)handle);
     onemkl_Cgebrd(queue, m, n, (float _Complex*)A, lda, D, E,
                  (float _Complex*)tauq, (float _Complex*)taup, (float _Complex*)work, lwork);
+
+    if (allocate) hipFree(work);
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -1424,29 +1695,37 @@ catch(...)
 }
 
 hipsolverStatus_t hipsolverZgebrd(hipsolverHandle_t handle,
-                                                   int               m,
-                                                   int               n,
-                                                   hipDoubleComplex* A,
-                                                   int               lda,
-                                                   double*           D,
-                                                   double*           E,
-                                                   hipDoubleComplex* tauq,
-                                                   hipDoubleComplex* taup,
-                                                   hipDoubleComplex* work,
-                                                   int               lwork,
-                                                   int*              devInfo)
+                                int               m,
+                                int               n,
+                                hipDoubleComplex* A,
+                                int               lda,
+                                double*           D,
+                                double*           E,
+                                hipDoubleComplex* tauq,
+                                hipDoubleComplex* taup,
+                                hipDoubleComplex* work,
+                                int               lwork,
+                                int*              devInfo)
 try
 {
-    if (A == nullptr || D == nullptr || E == nullptr || tauq == nullptr || taup == nullptr || work == nullptr) {
+    if (!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || D == nullptr || E == nullptr || tauq == nullptr || taup == nullptr ) {
         return HIPSOLVER_STATUS_INVALID_VALUE;
     }
-    lwork = lda;
-    auto status = hipsolverZgebrd_bufferSize(handle, m, n, &lwork);
-    if (status != HIPSOLVER_STATUS_SUCCESS)
-        return status;
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = lda;
+        auto status = hipsolverSgebrd_bufferSize(handle, m, n, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS)
+            return status;
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+    hipMemset(devInfo, 0, sizeof(int));
     auto queue = sycl_get_queue((syclHandle_t)handle);
     onemkl_Zgebrd(queue, m, n, (double _Complex*)A, lda, D, E,
                  (double _Complex*)tauq, (double _Complex*)taup, (double _Complex*)work, lwork);
+    if (allocate) hipFree(work);
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -1632,7 +1911,15 @@ hipsolverStatus_t hipsolverSgeqrf_bufferSize(
     hipsolverHandle_t handle, int m, int n, float* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Sgeqrf_ScPadSz(queue, m, n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1643,7 +1930,15 @@ hipsolverStatus_t hipsolverDgeqrf_bufferSize(
     hipsolverHandle_t handle, int m, int n, double* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Dgeqrf_ScPadSz(queue, m, n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1654,7 +1949,15 @@ hipsolverStatus_t hipsolverCgeqrf_bufferSize(
     hipsolverHandle_t handle, int m, int n, hipFloatComplex* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Cgeqrf_ScPadSz(queue, m, n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1665,7 +1968,15 @@ hipsolverStatus_t hipsolverZgeqrf_bufferSize(
     hipsolverHandle_t handle, int m, int n, hipDoubleComplex* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Dgeqrf_ScPadSz(queue, m, n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1673,17 +1984,37 @@ catch(...)
 }
 
 hipsolverStatus_t hipsolverSgeqrf(hipsolverHandle_t handle,
-                                                   int               m,
-                                                   int               n,
-                                                   float*            A,
-                                                   int               lda,
-                                                   float*            tau,
-                                                   float*            work,
-                                                   int               lwork,
-                                                   int*              devInfo)
+                                int               m,
+                                int               n,
+                                float*            A,
+                                int               lda,
+                                float*            tau,
+                                float*            work,
+                                int               lwork,
+                                int*              devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if (!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || tau == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = lda;
+        auto status = hipsolverSgeqrf_bufferSize(handle, m, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS)
+            return status;
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+    hipMemset(devInfo, 0, sizeof(int));
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Sgeqrf(queue, m, n, A, lda, tau, work, lwork);
+    
+    if (allocate)
+        hipFree(work);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1701,7 +2032,27 @@ hipsolverStatus_t hipsolverDgeqrf(hipsolverHandle_t handle,
                                                    int*              devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if (!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || tau == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = lda;
+        auto status = hipsolverDgeqrf_bufferSize(handle, m, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS)
+            return status;
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+    hipMemset(devInfo, 0, sizeof(int));
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Dgeqrf(queue, m, n, A, lda, tau, work, lwork);
+    
+    if (allocate)
+        hipFree(work);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1719,7 +2070,27 @@ hipsolverStatus_t hipsolverCgeqrf(hipsolverHandle_t handle,
                                                    int*              devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if (!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || tau == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = lda;
+        auto status = hipsolverCgeqrf_bufferSize(handle, m, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS)
+            return status;
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+    hipMemset(devInfo, 0, sizeof(int));
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Cgeqrf(queue, m, n, (float _Complex*)A, lda, (float _Complex*)tau, (float _Complex*)work, lwork);
+    
+    if (allocate)
+        hipFree(work);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1737,7 +2108,27 @@ hipsolverStatus_t hipsolverZgeqrf(hipsolverHandle_t handle,
                                                    int*              devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if (!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || tau == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        lwork = lda;
+        auto status = hipsolverZgeqrf_bufferSize(handle, m, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS)
+            return status;
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+    hipMemset(devInfo, 0, sizeof(int));
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Zgeqrf(queue, m, n, (double _Complex*)A, lda, (double _Complex*)tau, (double _Complex*)work, lwork);
+    
+    if (allocate)
+        hipFree(work);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1922,7 +2313,9 @@ hipsolverStatus_t hipsolverSgesvd_bufferSize(
     hipsolverHandle_t handle, signed char jobu, signed char jobv, int m, int n, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    // parameter mismatch
+    lwork = 0;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -1980,12 +2373,29 @@ hipsolverStatus_t hipsolverSgesvd(hipsolverHandle_t handle,
                                                    int*              devInfo)
 try
 {
-    if (A == nullptr || S == nullptr || U == nullptr || V == nullptr || work == nullptr || rwork == nullptr) {
+    if (handle == nullptr) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (A == nullptr || S == nullptr || m < 0 || n < 0) {
         return HIPSOLVER_STATUS_INVALID_VALUE;
     }
+    if (U == nullptr || V == nullptr )
+        return HIPSOLVER_STATUS_SUCCESS;
+
     auto queue = sycl_get_queue((syclHandle_t)handle);
-    lwork = (int)onemkl_Sgesvd_ScPadSz(queue, jobu, jobv, m, n, lda, ldu, ldv);
+    bool allocate = false;
+    if (work == nullptr || lwork == 0 || true){
+        lwork = (int)onemkl_Sgesvd_ScPadSz(queue, jobu, jobv, m, n, lda, ldu, ldv);
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    hipMemset(devInfo, 0, sizeof(int));    
+
     onemkl_Sgesvd(queue, jobu, jobv, m, n, A, lda, S, U, ldu, V, ldv, work, lwork);
+    if(allocate){
+        hipFree(work);
+    }
+
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -2479,7 +2889,14 @@ hipsolverStatus_t hipsolverSgetrf_bufferSize(
     hipsolverHandle_t handle, int m, int n, float* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Sgetrf_ScPadSz(queue, m, n, lda);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2490,7 +2907,14 @@ hipsolverStatus_t hipsolverDgetrf_bufferSize(
     hipsolverHandle_t handle, int m, int n, double* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Dgetrf_ScPadSz(queue, m, n, lda);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2501,7 +2925,14 @@ hipsolverStatus_t hipsolverCgetrf_bufferSize(
     hipsolverHandle_t handle, int m, int n, hipFloatComplex* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Cgetrf_ScPadSz(queue, m, n, lda);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2512,7 +2943,14 @@ hipsolverStatus_t hipsolverZgetrf_bufferSize(
     hipsolverHandle_t handle, int m, int n, hipDoubleComplex* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Zgetrf_ScPadSz(queue, m, n, lda);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2520,17 +2958,57 @@ catch(...)
 }
 
 hipsolverStatus_t hipsolverSgetrf(hipsolverHandle_t handle,
-                                                   int               m,
-                                                   int               n,
-                                                   float*            A,
-                                                   int               lda,
-                                                   float*            work,
-                                                   int               lwork,
-                                                   int*              devIpiv,
-                                                   int*              devInfo)
+                                int               m,
+                                int               n,
+                                float*            A,
+                                int               lda,
+                                float*            work,
+                                int               lwork,
+                                int*              devIpiv,
+                                int*              devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || devIpiv == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if (work == nullptr || lwork == 0) {
+        lwork = 0;
+        hipsolverSgetrf_bufferSize(handle, m, n, A, lda, &lwork);
+        hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    // WA: MKL does not use devInfo hence resetting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+    
+    // WA: data type of devIpiv is different in MKL vs HIP and CUDA solver library
+    //     hence need special handling here. Force type cast was causing crash as 
+    //     MKL's requirement is more.
+    //     Note: It can have performance impact as there are extra copies and element wise copies are involved  
+    int64_t* local_dIpiv;
+    auto no_of_elements = max(1, min(m,n));
+    // Allocating it on host with device access to avoid extra copy needed while accessing it from host
+    hipHostMalloc(&local_dIpiv, sizeof(int64_t)* no_of_elements);
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Sgetrf(queue, m, n, A, lda, local_dIpiv, work, lwork);
+
+    int* local_hIpiv = (int*)malloc(sizeof(int)* no_of_elements);
+    for(auto i=0; i< no_of_elements; ++i){
+        local_hIpiv[i] = (int)local_dIpiv[i];
+    }
+    hipMemcpy(devIpiv, local_hIpiv, sizeof(int)* min(m,n), hipMemcpyHostToDevice);
+
+    // release the memory allocated in the WA
+    hipFree(local_dIpiv);
+    free(local_hIpiv);
+
+    if (allocate)
+        hipFree(work);
+    
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2548,7 +3026,47 @@ hipsolverStatus_t hipsolverDgetrf(hipsolverHandle_t handle,
                                                    int*              devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || devIpiv == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if (work == nullptr || lwork == 0) {
+        lwork = 0;
+        hipsolverDgetrf_bufferSize(handle, m, n, A, lda, &lwork);
+        hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    // WA: MKL does not use devInfo hence resetting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+    
+    // WA: data type of devIpiv is different in MKL vs HIP and CUDA solver library
+    //     hence need special handling here. Force type cast was causing crash as 
+    //     MKL's requirement is more.
+    //     Note: It can have performance impact as there are extra copies and element wise copies are involved  
+    int64_t* local_dIpiv;
+    auto no_of_elements = max(1, min(m,n));
+    // Allocating it on host with device access to avoid extra copy needed while accessing it from host
+    hipHostMalloc(&local_dIpiv, sizeof(int64_t)* no_of_elements);
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Dgetrf(queue, m, n, A, lda, local_dIpiv, work, lwork);
+
+    int* local_hIpiv = (int*)malloc(sizeof(int)* no_of_elements);
+    for(auto i=0; i< no_of_elements; ++i){
+        local_hIpiv[i] = (int)local_dIpiv[i];
+    }
+    hipMemcpy(devIpiv, local_hIpiv, sizeof(int)* min(m,n), hipMemcpyHostToDevice);
+
+    // release the memory allocated in the WA
+    hipFree(local_dIpiv);
+    free(local_hIpiv);
+    
+    if (allocate)
+        hipFree(work);
+    
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2566,7 +3084,47 @@ hipsolverStatus_t hipsolverCgetrf(hipsolverHandle_t handle,
                                                    int*              devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || devIpiv == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if (work == nullptr || lwork == 0) {
+        lwork = 0;
+        hipsolverCgetrf_bufferSize(handle, m, n, A, lda, &lwork);
+        hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    // WA: MKL does not use devInfo hence resetting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+    
+    // WA: data type of devIpiv is different in MKL vs HIP and CUDA solver library
+    //     hence need special handling here. Force type cast was causing crash as 
+    //     MKL's requirement is more.
+    //     Note: It can have performance impact as there are extra copies and element wise copies are involved  
+    int64_t* local_dIpiv;
+    auto no_of_elements = max(1, min(m,n));
+    // Allocating it on host with device access to avoid extra copy needed while accessing it from host
+    hipHostMalloc(&local_dIpiv, sizeof(int64_t)* no_of_elements);
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Cgetrf(queue, m, n, (float _Complex*)A, lda, local_dIpiv, (float _Complex*)work, lwork);
+
+    int* local_hIpiv = (int*)malloc(sizeof(int)* no_of_elements);
+    for(auto i=0; i< no_of_elements; ++i){
+        local_hIpiv[i] = (int)local_dIpiv[i];
+    }
+    hipMemcpy(devIpiv, local_hIpiv, sizeof(int)* min(m,n), hipMemcpyHostToDevice);
+
+    // release the memory allocated in the WA
+    hipFree(local_dIpiv);
+    free(local_hIpiv);
+    
+    if (allocate)
+        hipFree(work);
+    
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2584,7 +3142,47 @@ hipsolverStatus_t hipsolverZgetrf(hipsolverHandle_t handle,
                                                    int*              devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (A == nullptr || devIpiv == nullptr || devInfo == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if (work == nullptr || lwork == 0) {
+        lwork = 0;
+        hipsolverZgetrf_bufferSize(handle, m, n, A, lda, &lwork);
+        hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    // WA: MKL does not use devInfo hence resetting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+    
+    // WA: data type of devIpiv is different in MKL vs HIP and CUDA solver library
+    //     hence need special handling here. Force type cast was causing crash as 
+    //     MKL's requirement is more.
+    //     Note: It can have performance impact as there are extra copies and element wise copies are involved  
+    int64_t* local_dIpiv;
+    auto no_of_elements = max(1, min(m,n));
+    // Allocating it on host with device access to avoid extra copy needed while accessing it from host
+    hipHostMalloc(&local_dIpiv, sizeof(int64_t)* no_of_elements);
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Zgetrf(queue, m, n, (double _Complex*)A, lda, local_dIpiv, (double _Complex*)work, lwork);
+
+    int* local_hIpiv = (int*)malloc(sizeof(int)* no_of_elements);
+    for(auto i=0; i< no_of_elements; ++i){
+        local_hIpiv[i] = (int)local_dIpiv[i];
+    }
+    hipMemcpy(devIpiv, local_hIpiv, sizeof(int)* min(m,n), hipMemcpyHostToDevice);
+
+    // release the memory allocated in the WA
+    hipFree(local_dIpiv);
+    free(local_hIpiv);
+    
+    if (allocate)
+        hipFree(work);
+    
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2604,7 +3202,16 @@ hipsolverStatus_t hipsolverSgetrs_bufferSize(hipsolverHandle_t    handle,
                                                               int*                 lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(trans))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Sgetrs_ScPadSz(queue, convert(trans), n, nrhs, lda, ldb);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2623,7 +3230,16 @@ hipsolverStatus_t hipsolverDgetrs_bufferSize(hipsolverHandle_t    handle,
                                                               int*                 lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(trans))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Dgetrs_ScPadSz(queue, convert(trans), n, nrhs, lda, ldb);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2642,7 +3258,14 @@ hipsolverStatus_t hipsolverCgetrs_bufferSize(hipsolverHandle_t    handle,
                                                               int*                 lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Cgetrs_ScPadSz(queue, convert(trans), n, nrhs, lda, ldb);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2661,7 +3284,14 @@ hipsolverStatus_t hipsolverZgetrs_bufferSize(hipsolverHandle_t    handle,
                                                               int*                 lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if(lwork == nullptr)
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+
+    *lwork = (int)onemkl_Zgetrs_ScPadSz(queue, convert(trans), n, nrhs, lda, ldb);
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2669,20 +3299,59 @@ catch(...)
 }
 
 hipsolverStatus_t hipsolverSgetrs(hipsolverHandle_t    handle,
-                                                   hipsolverOperation_t trans,
-                                                   int                  n,
-                                                   int                  nrhs,
-                                                   float*               A,
-                                                   int                  lda,
-                                                   int*                 devIpiv,
-                                                   float*               B,
-                                                   int                  ldb,
-                                                   float*               work,
-                                                   int                  lwork,
-                                                   int*                 devInfo)
+                                hipsolverOperation_t trans,
+                                int                  n,
+                                int                  nrhs,
+                                float*               A,
+                                int                  lda,
+                                int*                 devIpiv,
+                                float*               B,
+                                int                  ldb,
+                                float*               work,
+                                int                  lwork,
+                                int*                 devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(trans))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if (A == nullptr || B == nullptr || devIpiv == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if (work == nullptr || lwork ==0) {
+        lwork = 0;
+        hipsolverSgetrs_bufferSize(handle, trans, n, nrhs, A, lda, devIpiv, B, ldb, &lwork);
+        hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    // WA: MKL does not use devinfo hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+    // WA: data type of devIpiv is different in MKL vs HIP and CUDA solver library
+    //     hence need special handling here. Force type cast was causing result mismatch
+    //     Note: It can have performance impact as there are extra copies and 
+    //           element wise copies are involved between Host <-> device memory
+    auto no_of_elements = max(1, n);
+    int* local_hIpiv = (int*)malloc(no_of_elements*sizeof(int));
+    hipMemcpy(local_hIpiv, devIpiv, sizeof(int)*no_of_elements, hipMemcpyDeviceToHost);
+
+    int64_t* dIpiv; hipHostMalloc(&dIpiv, sizeof(int64_t)*no_of_elements);
+
+    for(auto i=0; i<no_of_elements; ++i) {
+        dIpiv[i] = local_hIpiv[i];
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Sgetrs(queue, convert(trans), n, nrhs, A, lda, (int64_t*)dIpiv, B, ldb, work, lwork);
+
+    hipFree(dIpiv);
+    free(local_hIpiv);
+
+    if (allocate)
+        hipFree(work);
+
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2703,7 +3372,46 @@ hipsolverStatus_t hipsolverDgetrs(hipsolverHandle_t    handle,
                                                    int*                 devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(trans))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if (A == nullptr || B == nullptr || devIpiv == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if (work == nullptr || lwork ==0) {
+        lwork = 0;
+        hipsolverDgetrs_bufferSize(handle, trans, n, nrhs, A, lda, devIpiv, B, ldb, &lwork);
+        hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    // WA: MKL does not use devinfo hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+    // WA: data type of devIpiv is different in MKL vs HIP and CUDA solver library
+    //     hence need special handling here. Force type cast was causing result mismatch
+    //     Note: It can have performance impact as there are extra copies and 
+    //           element wise copies are involved between Host <-> device memory
+    auto no_of_elements = max(1, n);
+    int* local_hIpiv = (int*)malloc(no_of_elements*sizeof(int));
+    hipMemcpy(local_hIpiv, devIpiv, sizeof(int)*no_of_elements, hipMemcpyDeviceToHost);
+
+    int64_t* dIpiv; hipHostMalloc(&dIpiv, sizeof(int64_t)*no_of_elements);
+
+    for(auto i=0; i<no_of_elements; ++i) {
+        dIpiv[i] = local_hIpiv[i];
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Dgetrs(queue, convert(trans), n, nrhs, A, lda, dIpiv, B, ldb, work, lwork);
+
+    hipFree(dIpiv);
+    free(local_hIpiv);
+
+    if (allocate)
+        hipFree(work);
+
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2724,7 +3432,46 @@ hipsolverStatus_t hipsolverCgetrs(hipsolverHandle_t    handle,
                                                    int*                 devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(trans))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if (A == nullptr || B == nullptr || devIpiv == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if (work == nullptr || lwork ==0) {
+        lwork = 0;
+        hipsolverCgetrs_bufferSize(handle, trans, n, nrhs, A, lda, devIpiv, B, ldb, &lwork);
+        hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    // WA: MKL does not use devinfo hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+    // WA: data type of devIpiv is different in MKL vs HIP and CUDA solver library
+    //     hence need special handling here. Force type cast was causing result mismatch
+    //     Note: It can have performance impact as there are extra copies and 
+    //           element wise copies are involved between Host <-> device memory
+    auto no_of_elements = max(1, n);
+    int* local_hIpiv = (int*)malloc(no_of_elements*sizeof(int));
+    hipMemcpy(local_hIpiv, devIpiv, sizeof(int)*no_of_elements, hipMemcpyDeviceToHost);
+
+    int64_t* dIpiv; hipHostMalloc(&dIpiv, sizeof(int64_t)*no_of_elements);
+
+    for(auto i=0; i<no_of_elements; ++i) {
+        dIpiv[i] = local_hIpiv[i];
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Cgetrs(queue, convert(trans), n, nrhs, (float _Complex*)A, lda, dIpiv, (float _Complex*)B, ldb, (float _Complex*)work, lwork);
+
+    hipFree(dIpiv);
+    free(local_hIpiv);
+
+    if (allocate)
+        hipFree(work);
+
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2745,7 +3492,46 @@ hipsolverStatus_t hipsolverZgetrs(hipsolverHandle_t    handle,
                                                    int*                 devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(trans))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if (A == nullptr || B == nullptr || devIpiv == nullptr) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if (work == nullptr || lwork ==0) {
+        lwork = 0;
+        hipsolverZgetrs_bufferSize(handle, trans, n, nrhs, A, lda, devIpiv, B, ldb, &lwork);
+        hipHostMalloc(&work, lwork);
+        allocate = true;
+    }
+    // WA: MKL does not use devinfo hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+    // WA: data type of devIpiv is different in MKL vs HIP and CUDA solver library
+    //     hence need special handling here. Force type cast was causing result mismatch
+    //     Note: It can have performance impact as there are extra copies and 
+    //           element wise copies are involved between Host <-> device memory
+    auto no_of_elements = max(1, n);
+    int* local_hIpiv = (int*)malloc(no_of_elements*sizeof(int));
+    hipMemcpy(local_hIpiv, devIpiv, sizeof(int)*no_of_elements, hipMemcpyDeviceToHost);
+
+    int64_t* dIpiv; hipHostMalloc(&dIpiv, sizeof(int64_t)*no_of_elements);
+
+    for(auto i=0; i<no_of_elements; ++i) {
+        dIpiv[i] = local_hIpiv[i];
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Zgetrs(queue, convert(trans), n, nrhs, (double _Complex*)A, lda, dIpiv, (double _Complex*)B, ldb, (double _Complex*)work, lwork);
+
+    hipFree(dIpiv);
+    free(local_hIpiv);
+
+    if (allocate)
+        hipFree(work);
+
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2757,7 +3543,19 @@ hipsolverStatus_t hipsolverSpotrf_bufferSize(
     hipsolverHandle_t handle, hipsolverFillMode_t uplo, int n, float* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Spotrf_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2768,7 +3566,19 @@ hipsolverStatus_t hipsolverDpotrf_bufferSize(
     hipsolverHandle_t handle, hipsolverFillMode_t uplo, int n, double* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Dpotrf_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2783,7 +3593,19 @@ hipsolverStatus_t hipsolverCpotrf_bufferSize(hipsolverHandle_t   handle,
                                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Cpotrf_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2798,7 +3620,19 @@ hipsolverStatus_t hipsolverZpotrf_bufferSize(hipsolverHandle_t   handle,
                                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Zpotrf_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2815,7 +3649,36 @@ hipsolverStatus_t hipsolverSpotrf(hipsolverHandle_t   handle,
                                                    int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverSpotrf_bufferSize(handle, uplo, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Spotrf(queue, convert(uplo), n, A, lda, work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2832,7 +3695,36 @@ hipsolverStatus_t hipsolverDpotrf(hipsolverHandle_t   handle,
                                                    int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverDpotrf_bufferSize(handle, uplo, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Dpotrf(queue, convert(uplo), n, A, lda, work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2849,7 +3741,36 @@ hipsolverStatus_t hipsolverCpotrf(hipsolverHandle_t   handle,
                                                    int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverCpotrf_bufferSize(handle, uplo, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Cpotrf(queue, convert(uplo), n, (float _Complex*)A, lda, (float _Complex*)work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -2866,7 +3787,36 @@ hipsolverStatus_t hipsolverZpotrf(hipsolverHandle_t   handle,
                                                    int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverZpotrf_bufferSize(handle, uplo, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Zpotrf(queue, convert(uplo), n, (double _Complex*)A, lda, (double _Complex*)work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3015,7 +3965,19 @@ hipsolverStatus_t hipsolverSpotri_bufferSize(
     hipsolverHandle_t handle, hipsolverFillMode_t uplo, int n, float* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Spotri_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3026,7 +3988,19 @@ hipsolverStatus_t hipsolverDpotri_bufferSize(
     hipsolverHandle_t handle, hipsolverFillMode_t uplo, int n, double* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Dpotri_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3041,7 +4015,19 @@ hipsolverStatus_t hipsolverCpotri_bufferSize(hipsolverHandle_t   handle,
                                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Cpotri_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3056,7 +4042,19 @@ hipsolverStatus_t hipsolverZpotri_bufferSize(hipsolverHandle_t   handle,
                                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Zpotri_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3073,7 +4071,36 @@ hipsolverStatus_t hipsolverSpotri(hipsolverHandle_t   handle,
                                                    int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverSpotri_bufferSize(handle, uplo, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Spotri(queue, convert(uplo), n, A, lda, work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3090,7 +4117,36 @@ hipsolverStatus_t hipsolverDpotri(hipsolverHandle_t   handle,
                                                    int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverDpotri_bufferSize(handle, uplo, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Dpotri(queue, convert(uplo), n, A, lda, work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3107,7 +4163,36 @@ hipsolverStatus_t hipsolverCpotri(hipsolverHandle_t   handle,
                                                    int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverCpotri_bufferSize(handle, uplo, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Cpotri(queue, convert(uplo), n, (float _Complex*)A, lda, (float _Complex*)work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3124,7 +4209,36 @@ hipsolverStatus_t hipsolverZpotri(hipsolverHandle_t   handle,
                                                    int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverZpotri_bufferSize(handle, uplo, n, A, lda, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Zpotri(queue, convert(uplo), n, (double _Complex*)A, lda, (double _Complex*)work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3133,17 +4247,29 @@ catch(...)
 
 // potrs
 hipsolverStatus_t hipsolverSpotrs_bufferSize(hipsolverHandle_t   handle,
-                                                              hipsolverFillMode_t uplo,
-                                                              int                 n,
-                                                              int                 nrhs,
-                                                              float*              A,
-                                                              int                 lda,
-                                                              float*              B,
-                                                              int                 ldb,
-                                                              int*                lwork)
+                                            hipsolverFillMode_t uplo,
+                                            int                 n,
+                                            int                 nrhs,
+                                            float*              A,
+                                            int                 lda,
+                                            float*              B,
+                                            int                 ldb,
+                                            int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Spotrs_ScPadSz(queue, convert(uplo), n, nrhs, lda, ldb);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3161,7 +4287,19 @@ hipsolverStatus_t hipsolverDpotrs_bufferSize(hipsolverHandle_t   handle,
                                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Dpotrs_ScPadSz(queue, convert(uplo), n, nrhs, lda, ldb);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3179,7 +4317,19 @@ hipsolverStatus_t hipsolverCpotrs_bufferSize(hipsolverHandle_t   handle,
                                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Cpotrs_ScPadSz(queue, convert(uplo), n, nrhs, lda, ldb);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3197,7 +4347,19 @@ hipsolverStatus_t hipsolverZpotrs_bufferSize(hipsolverHandle_t   handle,
                                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Cpotrs_ScPadSz(queue, convert(uplo), n, nrhs, lda, ldb);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3205,19 +4367,48 @@ catch(...)
 }
 
 hipsolverStatus_t hipsolverSpotrs(hipsolverHandle_t   handle,
-                                                   hipsolverFillMode_t uplo,
-                                                   int                 n,
-                                                   int                 nrhs,
-                                                   float*              A,
-                                                   int                 lda,
-                                                   float*              B,
-                                                   int                 ldb,
-                                                   float*              work,
-                                                   int                 lwork,
-                                                   int*                devInfo)
+                                hipsolverFillMode_t uplo,
+                                int                 n,
+                                int                 nrhs,
+                                float*              A,
+                                int                 lda,
+                                float*              B,
+                                int                 ldb,
+                                float*              work,
+                                int                 lwork,
+                                int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || B == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverSpotrs_bufferSize(handle, uplo, n, nrhs, A, lda, B, ldb, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Spotrs(queue, convert(uplo), n, nrhs, A, lda, B, ldb, work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3237,7 +4428,36 @@ hipsolverStatus_t hipsolverDpotrs(hipsolverHandle_t   handle,
                                                    int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || B == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverDpotrs_bufferSize(handle, uplo, n, nrhs, A, lda, B, ldb, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Dpotrs(queue, convert(uplo), n, nrhs, A, lda, B, ldb, work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3257,7 +4477,36 @@ hipsolverStatus_t hipsolverCpotrs(hipsolverHandle_t   handle,
                                                    int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || B == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverCpotrs_bufferSize(handle, uplo, n, nrhs, A, lda, B, ldb, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Cpotrs(queue, convert(uplo), n, nrhs, (float _Complex*)A, lda, (float _Complex*)B, ldb, (float _Complex*)work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3277,7 +4526,36 @@ hipsolverStatus_t hipsolverZpotrs(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || B == nullptr || devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverZpotrs_bufferSize(handle, uplo, n, nrhs, A, lda, B, ldb, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Zpotrs(queue, convert(uplo), n, nrhs, (double _Complex*)A, lda, (double _Complex*)B, ldb, (double _Complex*)work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3457,9 +4735,13 @@ hipsolverStatus_t hipsolverSsyevd_bufferSize(hipsolverHandle_t   handle,
 try
 {
     if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
-    if (A == nullptr || D == nullptr || lwork == nullptr) {
+
+    if (!isvalid(jobz) || !isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    if (lwork == nullptr) {
         return HIPSOLVER_STATUS_INVALID_VALUE;
     }
+
     auto queue = sycl_get_queue((syclHandle_t)handle);
     auto size = onemkl_Ssyevd_ScPadSz(queue, convert(jobz), convert(uplo), n, lda);
     *lwork = (int)size;
@@ -3556,11 +4838,28 @@ try
 {
     if(!handle)
         return HIPSOLVER_STATUS_NOT_INITIALIZED;
-    if(A == nullptr || D == nullptr || work == nullptr)
+
+    if (!isvalid(jobz) || !isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || D == nullptr ){
         return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if(work == nullptr || lwork == 0) {
+        hipsolverSsyevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
     auto queue = sycl_get_queue((syclHandle_t)handle);
-    hipsolverSsyevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
     onemkl_Ssyevd(queue, convert(jobz), convert(uplo), n, A, lda, D, work, lwork);
+
+    if (allocate)
+        hipFree(work);
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -3582,11 +4881,27 @@ try
 {
     if(!handle)
         return HIPSOLVER_STATUS_NOT_INITIALIZED;
-    if(A == nullptr || D == nullptr || work == nullptr)
+
+    if (!isvalid(jobz) || !isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || D == nullptr ){
         return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if(work == nullptr || lwork == 0) {
+        hipsolverDsyevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
     auto queue = sycl_get_queue((syclHandle_t)handle);
-    hipsolverDsyevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
     onemkl_Dsyevd(queue, convert(jobz), convert(uplo), n, A, lda, D, work, lwork);
+    if (allocate)
+        hipFree(work);
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -3608,11 +4923,27 @@ try
 {
     if(!handle)
         return HIPSOLVER_STATUS_NOT_INITIALIZED;
-    if(A == nullptr || D == nullptr || work == nullptr)
+
+    if (!isvalid(jobz) || !isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || D == nullptr ){
         return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if(work == nullptr || lwork == 0) {
+        hipsolverCheevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
     auto queue = sycl_get_queue((syclHandle_t)handle);
-    hipsolverCheevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
     onemkl_Cheevd(queue, convert(jobz), convert(uplo), n, (float _Complex*)A, lda, D, (float _Complex*)work, lwork);
+    if (allocate)
+        hipFree(work);
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -3634,11 +4965,27 @@ try
 {
     if(!handle)
         return HIPSOLVER_STATUS_NOT_INITIALIZED;
-    if(A == nullptr || D == nullptr || work == nullptr)
+
+    if (!isvalid(jobz) || !isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || D == nullptr ){
         return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+    bool allocate = false;
+    if(work == nullptr || lwork == 0) {
+        hipsolverZheevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
     auto queue = sycl_get_queue((syclHandle_t)handle);
-    hipsolverZheevd_bufferSize(handle, jobz, uplo, n, A, lda, D, &lwork);
     onemkl_Zheevd(queue, convert(jobz), convert(uplo), n, (double _Complex*)A, lda, D, (double _Complex*)work, lwork);
+    if (allocate)
+        hipFree(work);
     return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
@@ -3974,7 +5321,19 @@ hipsolverStatus_t hipsolverSsygvd_bufferSize(hipsolverHandle_t   handle,
                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo) || !isvalid(jobz) || !isvalid(itype))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Ssygvd_ScPadSz(queue, convert(itype), convert(jobz), convert(uplo), n, lda, ldb);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -3994,7 +5353,19 @@ hipsolverStatus_t hipsolverDsygvd_bufferSize(hipsolverHandle_t   handle,
                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo) || !isvalid(jobz) || !isvalid(itype))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Dsygvd_ScPadSz(queue, convert(itype), convert(jobz), convert(uplo), n, lda, ldb);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4014,7 +5385,19 @@ hipsolverStatus_t hipsolverChegvd_bufferSize(hipsolverHandle_t   handle,
                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo) || !isvalid(jobz) || !isvalid(itype))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Chegvd_ScPadSz(queue, convert(itype), convert(jobz), convert(uplo), n, lda, ldb);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4034,7 +5417,19 @@ hipsolverStatus_t hipsolverZhegvd_bufferSize(hipsolverHandle_t   handle,
                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo) || !isvalid(jobz) || !isvalid(itype))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Zhegvd_ScPadSz(queue, convert(itype), convert(jobz), convert(uplo), n, lda, ldb);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4056,7 +5451,36 @@ hipsolverStatus_t hipsolverSsygvd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(itype) || !isvalid(jobz) || !isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || B == nullptr || W ==nullptr ||devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverSsygvd_bufferSize(handle, itype, jobz, uplo, n, A, lda, B, ldb, W, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Ssygvd(queue, convert(itype), convert(jobz), convert(uplo), n, A, lda, B, ldb, W, work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4078,7 +5502,36 @@ hipsolverStatus_t hipsolverDsygvd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(itype) || !isvalid(jobz) || !isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || B == nullptr || W ==nullptr ||devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverDsygvd_bufferSize(handle, itype, jobz, uplo, n, A, lda, B, ldb, W, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Dsygvd(queue, convert(itype), convert(jobz), convert(uplo), n, A, lda, B, ldb, W, work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4100,7 +5553,36 @@ hipsolverStatus_t hipsolverChegvd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(itype) || !isvalid(jobz) || !isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || B == nullptr || W ==nullptr ||devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverChegvd_bufferSize(handle, itype, jobz, uplo, n, A, lda, B, ldb, W, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Chegvd(queue, convert(itype), convert(jobz), convert(uplo), n, (float _Complex*)A, lda, (float _Complex*)B, ldb, W, (float _Complex*)work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4122,7 +5604,36 @@ hipsolverStatus_t hipsolverZhegvd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(itype) || !isvalid(jobz) || !isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || B == nullptr || W ==nullptr ||devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverZhegvd_bufferSize(handle, itype, jobz, uplo, n, A, lda, B, ldb, W, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Zhegvd(queue, convert(itype), convert(jobz), convert(uplo), n, (double _Complex*)A, lda, (double _Complex*)B, ldb, W, (double _Complex*)work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4318,7 +5829,19 @@ hipsolverStatus_t hipsolverSsytrd_bufferSize(hipsolverHandle_t   handle,
                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Ssytrd_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4336,7 +5859,19 @@ hipsolverStatus_t hipsolverDsytrd_bufferSize(hipsolverHandle_t   handle,
                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Dsytrd_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4354,7 +5889,19 @@ hipsolverStatus_t hipsolverChetrd_bufferSize(hipsolverHandle_t   handle,
                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Chetrd_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4372,7 +5919,19 @@ hipsolverStatus_t hipsolverZhetrd_bufferSize(hipsolverHandle_t   handle,
                                               int*                lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle) return HIPSOLVER_STATUS_NOT_INITIALIZED;
+    if (!isvalid(uplo))
+    {
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+    }
+    if (lwork == nullptr ) {
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    auto size = onemkl_Zhetrd_ScPadSz(queue, convert(uplo), n, lda);
+    *lwork = (int)size;
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4392,7 +5951,36 @@ hipsolverStatus_t hipsolverSsytrd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || D == nullptr || E==nullptr||tau==nullptr||devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverSsytrd_bufferSize(handle, uplo, n, A, lda, D, E, tau, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Ssytrd(queue, convert(uplo), n, A, lda, D, E, tau, work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4412,7 +6000,36 @@ hipsolverStatus_t hipsolverDsytrd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || D == nullptr || E==nullptr||tau==nullptr||devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverDsytrd_bufferSize(handle, uplo, n, A, lda, D, E, tau, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Dsytrd(queue, convert(uplo), n, A, lda, D, E, tau, work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4432,7 +6049,36 @@ hipsolverStatus_t hipsolverChetrd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || D == nullptr || E==nullptr||tau==nullptr||devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverChetrd_bufferSize(handle, uplo, n, A, lda, D, E, tau, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Chetrd(queue, convert(uplo), n, (float _Complex*)A, lda, D, E, (float _Complex*)tau, (float _Complex*)work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4452,7 +6098,36 @@ hipsolverStatus_t hipsolverZhetrd(hipsolverHandle_t   handle,
                                   int*                devInfo)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+    if(!handle)
+        return HIPSOLVER_STATUS_NOT_INITIALIZED;
+
+    if (!isvalid(uplo))
+        return HIPSOLVER_STATUS_INVALID_ENUM;
+
+    if(A == nullptr || D == nullptr || E==nullptr||tau==nullptr||devInfo==nullptr){
+        return HIPSOLVER_STATUS_INVALID_VALUE;
+    }
+
+    bool allocate = false;
+    if (work == nullptr || lwork == 0){
+        auto status = hipsolverZhetrd_bufferSize(handle, uplo, n, A, lda, D, E, tau, &lwork);
+        if (status != HIPSOLVER_STATUS_SUCCESS) {
+            return status;
+        }
+        hipHostMalloc(&work, lwork, 0);
+        allocate = true;
+    }
+
+    // WA: MKL does not use info hence setting it to zero
+    hipMemset(devInfo, 0, sizeof(int));
+
+    auto queue = sycl_get_queue((syclHandle_t)handle);
+    onemkl_Zhetrd(queue, convert(uplo), n, (double _Complex*)A, lda, D, E, (double _Complex*)tau, (double _Complex*)work, lwork);
+
+    if (allocate) {
+        hipFree(work);
+    }
+    return HIPSOLVER_STATUS_SUCCESS;
 }
 catch(...)
 {
@@ -4464,7 +6139,7 @@ hipsolverStatus_t
     hipsolverSsytrf_bufferSize(hipsolverHandle_t handle, int n, float* A, int lda, int* lwork)
 try
 {
-	return HIPSOLVER_STATUS_NOT_SUPPORTED;
+
 }
 catch(...)
 {

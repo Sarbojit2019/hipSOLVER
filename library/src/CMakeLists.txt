@@ -212,58 +212,61 @@ endif( )
 ############################################################
 # Installation
 
-if (NOT USE_ONEAPI)
-  rocm_install_targets(
-    TARGETS hipsolver
-    INCLUDE
-      ${CMAKE_BINARY_DIR}/include
-  )
-endif( )
+#if (NOT USE_ONEAPI)
+#  rocm_install_targets(
+#    TARGETS hipsolver
+#    INCLUDE
+#      ${CMAKE_BINARY_DIR}/include
+#  )
+#endif( )
 
-if ( NOT USE_CUDA )
-  if (NOT USE_ONEAPI)
-    rocm_export_targets(
-      TARGETS roc::hipsolver
-      DEPENDS PACKAGE hip
-      NAMESPACE roc::
-    )
-  endif()
-else( )
-  rocm_export_targets(
-    TARGETS roc::hipsolver
-    DEPENDS PACKAGE HIP
-    NAMESPACE roc::
-  )
-endif( )
+#if ( NOT USE_CUDA )
+#  if (NOT USE_ONEAPI)
+#    rocm_export_targets(
+#      TARGETS roc::hipsolver
+#      DEPENDS PACKAGE hip
+#      NAMESPACE roc::
+#    )
+#  endif()
+#else( )
+#  rocm_export_targets(
+#    TARGETS roc::hipsolver
+#    DEPENDS PACKAGE HIP
+#    NAMESPACE roc::
+#  )
+#endif( )
 
-if( UNIX )
-  # Force installation of .f90 module files
-  install(FILES "hipsolver_module.f90"
-          DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/hipsolver")
-endif( )
+#if( UNIX )
+#  # Force installation of .f90 module files
+#  install(FILES "hipsolver_module.f90"
+#          DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/hipsolver")
+#endif( )
 
-if(BUILD_FILE_REORG_BACKWARD_COMPATIBILITY AND NOT USE_ONEAPI)
-  rocm_install(
-    DIRECTORY
-       "${PROJECT_BINARY_DIR}/hipsolver"
-        DESTINATION "." )
+#if(BUILD_FILE_REORG_BACKWARD_COMPATIBILITY AND NOT USE_ONEAPI)
+#  rocm_install(
+#    DIRECTORY
+#       "${PROJECT_BINARY_DIR}/hipsolver"
+#        DESTINATION "." )
 
-  if ( NOT WIN32 )
+#  if ( NOT WIN32 )
+#
+#    #Create SymLink for Fortran Object Module for backward compatibility
+#    rocm_install(
+#      CODE "
+#        set(PREFIX \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX})
+#        set(INPUT_FILE \${PREFIX}/include/hipsolver/hipsolver_module.f90)
+#        set(SYMLINK_LOCATIONS \${PREFIX}/hipsolver/include \${PREFIX}/include)
+#        foreach(LOCATION IN LISTS SYMLINK_LOCATIONS)
+#          file(MAKE_DIRECTORY \${LOCATION})
+#          execute_process(COMMAND ln -sfr \${INPUT_FILE} \${LOCATION})
+#          message(STATUS \"Created symlink in \${LOCATION} to \${INPUT_FILE}.\")
+#        endforeach()
+#        "
+#    )
+#  endif() #NOT WIN32
+#  message( STATUS "Backward Compatible Sym Link Created for include directories" )
+#endif()
 
-    #Create SymLink for Fortran Object Module for backward compatibility
-    rocm_install(
-      CODE "
-        set(PREFIX \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX})
-        set(INPUT_FILE \${PREFIX}/include/hipsolver/hipsolver_module.f90)
-        set(SYMLINK_LOCATIONS \${PREFIX}/hipsolver/include \${PREFIX}/include)
-        foreach(LOCATION IN LISTS SYMLINK_LOCATIONS)
-          file(MAKE_DIRECTORY \${LOCATION})
-          execute_process(COMMAND ln -sfr \${INPUT_FILE} \${LOCATION})
-          message(STATUS \"Created symlink in \${LOCATION} to \${INPUT_FILE}.\")
-        endforeach()
-        "
-    )
-  endif() #NOT WIN32
-  message( STATUS "Backward Compatible Sym Link Created for include directories" )
-endif()
+#install hipblas
+install(TARGETS hipsolver DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
