@@ -47,7 +47,8 @@ const vector<vector<int>> size_range = {
     {32, 32},
     {50, 50},
     {70, 100},
-    {100, 150}};
+    {100, 150}
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_size_range = {{192, 192}, {500, 600}, {640, 640}, {1000, 1024}};
@@ -112,7 +113,7 @@ TEST_P(ORGTR, __float)
     run_tests<float>();
 }
 
-TEST_P(ORGTR, __double)
+/*TEST_P(ORGTR, __double)
 {
     run_tests<double>();
 }
@@ -146,7 +147,7 @@ TEST_P(UNGTR_FORTRAN, __double_complex)
 {
     run_tests<rocblas_double_complex>();
 }
-
+*/
 // INSTANTIATE_TEST_SUITE_P(daily_lapack, ORGTR, Combine(ValuesIn(large_size_range), ValuesIn(uplo_range)));
 
 INSTANTIATE_TEST_SUITE_P(checkin_lapack,

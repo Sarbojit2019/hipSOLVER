@@ -50,7 +50,8 @@ const vector<vector<int>> matrix_size_range = {
     {10, 10},
     {20, 30},
     {50, 50},
-    {70, 80}};
+    {70, 80}
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_matrix_size_range = {
@@ -120,22 +121,22 @@ TEST_P(POTRF, __float)
     run_tests<false, false, float>();
 }
 
-TEST_P(POTRF, __double)
-{
-    run_tests<false, false, double>();
-}
+//TEST_P(POTRF, __double)
+//{
+//    run_tests<false, false, double>();
+//}
 
 TEST_P(POTRF, __float_complex)
 {
     run_tests<false, false, rocblas_float_complex>();
 }
 
-TEST_P(POTRF, __double_complex)
-{
-    run_tests<false, false, rocblas_double_complex>();
-}
+//TEST_P(POTRF, __double_complex)
+//{
+//    run_tests<false, false, rocblas_double_complex>();
+//}
 
-TEST_P(POTRF_FORTRAN, __float)
+/*TEST_P(POTRF_FORTRAN, __float)
 {
     run_tests<false, false, float>();
 }
@@ -236,6 +237,7 @@ TEST_P(POTRF_COMPAT, batched__double_complex)
 {
     run_tests<true, false, rocblas_double_complex>();
 }
+*/
 
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          POTRF,

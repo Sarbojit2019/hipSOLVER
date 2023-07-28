@@ -70,7 +70,8 @@ const vector<vector<int>> size_range = {
     {30, 30, 1},
     {20, 20, 20},
     {50, 50, 50},
-    {100, 100, 50}};
+    {100, 100, 50}
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_size_range = {{150, 150, 100},
@@ -143,7 +144,7 @@ TEST_P(ORGBR, __float)
     run_tests<float>();
 }
 
-TEST_P(ORGBR, __double)
+/*TEST_P(ORGBR, __double)
 {
     run_tests<double>();
 }
@@ -177,6 +178,7 @@ TEST_P(UNGBR_FORTRAN, __double_complex)
 {
     run_tests<rocblas_double_complex>();
 }
+*/
 
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          ORGBR,

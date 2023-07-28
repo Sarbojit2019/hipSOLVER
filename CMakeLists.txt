@@ -51,7 +51,7 @@ endif()
 
 project( hipsolver LANGUAGES CXX )
 
-if( UNIX AND NOT USE_ONEAPI )
+if( UNIX AND NOT USE_ONEAPI)
   enable_language( Fortran )
 endif( )
 
@@ -192,6 +192,10 @@ add_subdirectory( library )
 include( clients/cmake/build-options.cmake )
 
 # Build clients of the library
+if (BUILD_CLIENTS_TESTS_FOR_ONEAPI AND USE_ONEAPI)
+  add_subdirectory( clients )
+endif()
+
 if( BUILD_CLIENTS_SAMPLES OR BUILD_CLIENTS_TESTS OR BUILD_CLIENTS_BENCHMARKS )
   if(NOT CLIENTS_OS)
     rocm_set_os_id(CLIENTS_OS)

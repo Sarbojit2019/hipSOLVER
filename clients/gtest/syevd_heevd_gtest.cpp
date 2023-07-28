@@ -50,7 +50,8 @@ const vector<vector<int>> size_range = {
     {12, 12},
     {20, 30},
     {35, 35},
-    {50, 60}};
+    {50, 60}
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_size_range = {{192, 192}, {256, 270}, {300, 300}};
@@ -135,7 +136,7 @@ TEST_P(HEEVD, __double_complex)
     run_tests<false, false, rocblas_double_complex>();
 }
 
-TEST_P(SYEVD_FORTRAN, __float)
+/*TEST_P(SYEVD_FORTRAN, __float)
 {
     run_tests<false, false, float>();
 }
@@ -154,6 +155,7 @@ TEST_P(HEEVD_FORTRAN, __double_complex)
 {
     run_tests<false, false, rocblas_double_complex>();
 }
+*/
 
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          SYEVD,

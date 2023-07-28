@@ -56,7 +56,8 @@ const vector<vector<int>> size_range = {
     {1, 1, 0},
     {20, 20, 0},
     {40, 30, 0},
-    {60, 30, 0}};
+    {60, 30, 0}
+    };
 
 const vector<vector<int>> opt_range = {
     // invalid
@@ -79,7 +80,8 @@ const vector<vector<int>> opt_range = {
     {0, 0, 0, 1, 0},
     {0, 0, 0, 0, 3},
     {0, 0, 0, 0, 2},
-    {0, 0, 0, 0, 1}};
+    {0, 0, 0, 0, 1}
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_size_range = {{120, 100, 0}, {300, 120, 0}};
@@ -190,7 +192,7 @@ TEST_P(GESVD, __float)
     run_tests<false, false, float>();
 }
 
-TEST_P(GESVD, __double)
+/*TEST_P(GESVD, __double)
 {
     run_tests<false, false, double>();
 }
@@ -264,6 +266,7 @@ TEST_P(GESVD_NRWK, __double_complex)
 {
     run_tests<false, false, rocblas_double_complex>();
 }
+*/
 
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          GESVD,

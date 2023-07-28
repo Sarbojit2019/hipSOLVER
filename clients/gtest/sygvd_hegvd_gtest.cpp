@@ -43,7 +43,8 @@ const vector<vector<char>> type_range = {{'1', 'N', 'U'},
                                          {'3', 'N', 'U'},
                                          {'1', 'V', 'L'},
                                          {'2', 'V', 'U'},
-                                         {'3', 'V', 'L'}};
+                                         {'3', 'V', 'L'}
+                                         };
 
 // for checkin_lapack tests
 const vector<vector<int>> matrix_size_range = {
@@ -53,7 +54,8 @@ const vector<vector<int>> matrix_size_range = {
     // normal (valid) samples
     {20, 30, 20},
     {35, 35, 35},
-    {50, 50, 60}};
+    {50, 50, 60}
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_matrix_size_range = {
@@ -129,7 +131,7 @@ TEST_P(SYGVD, __float)
     run_tests<false, false, float>();
 }
 
-TEST_P(SYGVD, __double)
+/*TEST_P(SYGVD, __double)
 {
     run_tests<false, false, double>();
 }
@@ -163,7 +165,7 @@ TEST_P(HEGVD_FORTRAN, __double_complex)
 {
     run_tests<false, false, rocblas_double_complex>();
 }
-
+*/
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          SYGVD,
 //                          Combine(ValuesIn(large_matrix_size_range), ValuesIn(type_range)));

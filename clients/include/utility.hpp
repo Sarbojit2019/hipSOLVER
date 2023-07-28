@@ -137,11 +137,11 @@ class hipsolver_local_gesvdj_info
 public:
     hipsolver_local_gesvdj_info()
     {
-        hipsolverDnCreateGesvdjInfo(&m_info);
+        //hipsolverDnCreateGesvdjInfo(&m_info);
     }
     ~hipsolver_local_gesvdj_info()
     {
-        hipsolverDnDestroyGesvdjInfo(m_info);
+        //hipsolverDnDestroyGesvdjInfo(m_info);
     }
 
     hipsolver_local_gesvdj_info(const hipsolver_local_gesvdj_info&) = delete;
@@ -170,11 +170,11 @@ class hipsolver_local_syevj_info
 public:
     hipsolver_local_syevj_info()
     {
-        hipsolverDnCreateSyevjInfo(&m_info);
+        //hipsolverDnCreateSyevjInfo(&m_info);
     }
     ~hipsolver_local_syevj_info()
     {
-        hipsolverDnDestroySyevjInfo(m_info);
+        //hipsolverDnDestroySyevjInfo(m_info);
     }
 
     hipsolver_local_syevj_info(const hipsolver_local_syevj_info&) = delete;

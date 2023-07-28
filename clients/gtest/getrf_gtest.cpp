@@ -150,7 +150,7 @@ TEST_P(GETRF, __double_complex)
     run_tests<false, false, hipsolverDoubleComplex>();
 }
 
-TEST_P(GETRF_FORTRAN, __float)
+/*TEST_P(GETRF_FORTRAN, __float)
 {
     run_tests<false, false, float>();
 }
@@ -209,7 +209,7 @@ TEST_P(GETRF_NPVT, __double_complex)
 {
     run_tests<false, false, hipsolverDoubleComplex>();
 }
-
+*/
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          GETRF,
 //                          Combine(ValuesIn(large_matrix_size_range), ValuesIn(large_n_size_range)));

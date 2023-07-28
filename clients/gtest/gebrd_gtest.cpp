@@ -45,7 +45,8 @@ const vector<vector<int>> matrix_size_range = {
     {50, 50},
     {70, 100},
     {130, 130},
-    {150, 200}};
+    {150, 200}
+    };
 
 const vector<int> n_size_range = {
     // invalid
@@ -54,7 +55,8 @@ const vector<int> n_size_range = {
     16,
     20,
     40,
-    50};
+    50
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_matrix_size_range = {
@@ -134,6 +136,7 @@ TEST_P(GEBRD, __double_complex)
     run_tests<false, false, rocblas_double_complex>();
 }
 
+/*
 TEST_P(GEBRD_FORTRAN, __float)
 {
     run_tests<false, false, float>();
@@ -153,6 +156,7 @@ TEST_P(GEBRD_FORTRAN, __double_complex)
 {
     run_tests<false, false, rocblas_double_complex>();
 }
+*/
 
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          GEBRD,

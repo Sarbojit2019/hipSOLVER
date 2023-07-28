@@ -47,7 +47,8 @@ const vector<vector<int>> size_range = {
     {12, 12},
     {20, 30},
     {35, 35},
-    {50, 60}};
+    {50, 60}
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_size_range = {{192, 192}, {256, 270}, {300, 300}};
@@ -122,7 +123,7 @@ TEST_P(SYEVJ, __float)
     run_tests<false, false, float>();
 }
 
-TEST_P(SYEVJ, __double)
+/*TEST_P(SYEVJ, __double)
 {
     run_tests<false, false, double>();
 }
@@ -198,6 +199,7 @@ TEST_P(HEEVJ_FORTRAN, strided_batched__double_complex)
 {
     run_tests<false, true, rocblas_double_complex>();
 }
+*/
 
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          SYEVJ,

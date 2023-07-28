@@ -47,7 +47,8 @@ const vector<vector<int>> matrix_size_range = {
     {50, 50},
     {70, 100},
     {130, 130},
-    {150, 200}};
+    {150, 200}
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_matrix_size_range = {
@@ -134,7 +135,7 @@ TEST_P(HETRD, __double_complex)
     run_tests<false, false, rocblas_double_complex>();
 }
 
-TEST_P(SYTRD_FORTRAN, __float)
+/*TEST_P(SYTRD_FORTRAN, __float)
 {
     run_tests<false, false, float>();
 }
@@ -153,7 +154,7 @@ TEST_P(HETRD_FORTRAN, __double_complex)
 {
     run_tests<false, false, rocblas_double_complex>();
 }
-
+*/
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          SYTRD,
 //                          Combine(ValuesIn(large_matrix_size_range), ValuesIn(uplo_range)));

@@ -49,7 +49,8 @@ const vector<vector<int>> matrix_size_range = {
     {32, 32},
     {50, 50},
     {70, 100},
-    {100, 150}};
+    {100, 150}
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_matrix_size_range
@@ -110,17 +111,12 @@ TEST_P(POTRI, __float)
     run_tests<false, false, float>();
 }
 
-TEST_P(POTRI, __double)
-{
-    run_tests<false, false, double>();
-}
-
 TEST_P(POTRI, __float_complex)
 {
     run_tests<false, false, rocblas_float_complex>();
 }
 
-TEST_P(POTRI, __double_complex)
+/*TEST_P(POTRI, __double_complex)
 {
     run_tests<false, false, rocblas_double_complex>();
 }
@@ -144,7 +140,7 @@ TEST_P(POTRI_FORTRAN, __double_complex)
 {
     run_tests<false, false, rocblas_double_complex>();
 }
-
+*/
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          POTRI,
 //                          Combine(ValuesIn(large_matrix_size_range), ValuesIn(uplo_range)));

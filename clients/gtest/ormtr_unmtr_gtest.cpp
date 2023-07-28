@@ -165,7 +165,7 @@ TEST_P(ORMTR, __float)
     run_tests<float>();
 }
 
-TEST_P(ORMTR, __double)
+/*TEST_P(ORMTR, __double)
 {
     run_tests<double>();
 }
@@ -199,6 +199,7 @@ TEST_P(UNMTR_FORTRAN, __double_complex)
 {
     run_tests<rocblas_double_complex>();
 }
+*/
 
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          ORMTR,

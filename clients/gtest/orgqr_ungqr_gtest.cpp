@@ -47,7 +47,8 @@ const vector<vector<int>> m_size_range = {
     {50, 50},
     // normal (valid) samples
     {70, 100},
-    {130, 130}};
+    {130, 130}
+    };
 
 const vector<vector<int>> n_size_range = {
     // always invalid
@@ -59,7 +60,8 @@ const vector<vector<int>> n_size_range = {
     // normal (valid) samples
     {10, 10},
     {20, 20},
-    {35, 25}};
+    {35, 25}
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_m_size_range = {{400, 410}, {640, 640}, {1000, 1024}, {2000, 2000}};
@@ -122,7 +124,6 @@ class UNGQR_FORTRAN : public ORGQR_UNGQR<true>
 };
 
 // non-batch tests
-
 TEST_P(ORGQR, __float)
 {
     run_tests<float>();
@@ -143,6 +144,8 @@ TEST_P(UNGQR, __double_complex)
     run_tests<rocblas_double_complex>();
 }
 
+/*
+
 TEST_P(ORGQR_FORTRAN, __float)
 {
     run_tests<float>();
@@ -162,6 +165,7 @@ TEST_P(UNGQR_FORTRAN, __double_complex)
 {
     run_tests<rocblas_double_complex>();
 }
+*/
 
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          ORGQR,

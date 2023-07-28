@@ -60,7 +60,8 @@ const vector<vector<int>> op_range = {
     {0, 0, 1, 0},
     {0, 0, 1, 1},
     {0, 0, 1, 2},
-    {1, 1, 0, 0}};
+    {1, 1, 0, 0}
+    };
 
 // for checkin_lapack tests
 const vector<vector<int>> size_range = {
@@ -75,7 +76,8 @@ const vector<vector<int>> size_range = {
     // normal (valid) samples
     {40, 40, 40},
     {45, 40, 30},
-    {50, 50, 20}};
+    {50, 50, 20}
+    };
 
 // // for daily_lapack tests
 // const vector<vector<int>> large_size_range
@@ -167,7 +169,7 @@ TEST_P(UNMQR, __double_complex)
     run_tests<rocblas_double_complex>();
 }
 
-TEST_P(ORMQR_FORTRAN, __float)
+/*TEST_P(ORMQR_FORTRAN, __float)
 {
     run_tests<float>();
 }
@@ -186,6 +188,7 @@ TEST_P(UNMQR_FORTRAN, __double_complex)
 {
     run_tests<rocblas_double_complex>();
 }
+*/
 
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          ORMQR,

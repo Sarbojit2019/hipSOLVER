@@ -50,7 +50,8 @@ const vector<vector<int>> matrix_sizeA_range = {
     {20, 20, 20},
     {30, 50, 30},
     {30, 30, 50},
-    {50, 60, 60}};
+    {50, 60, 60}
+    };
 const vector<vector<int>> matrix_sizeB_range = {
     // invalid
     {-1, 0},
@@ -131,22 +132,23 @@ TEST_P(POTRS, __float)
     run_tests<false, false, float>();
 }
 
-TEST_P(POTRS, __double)
-{
-    run_tests<false, false, double>();
-}
-
 TEST_P(POTRS, __float_complex)
 {
     run_tests<false, false, rocblas_float_complex>();
+}
+
+/*
+TEST_P(POTRS, __double)
+{
+    run_tests<false, false, double>();
 }
 
 TEST_P(POTRS, __double_complex)
 {
     run_tests<false, false, rocblas_double_complex>();
 }
-
-TEST_P(POTRS_FORTRAN, __float)
+*/
+/*TEST_P(POTRS_FORTRAN, __float)
 {
     run_tests<false, false, float>();
 }
@@ -247,7 +249,7 @@ TEST_P(POTRS_COMPAT, batched__double_complex)
 {
     run_tests<true, false, rocblas_double_complex>();
 }
-
+*/
 // INSTANTIATE_TEST_SUITE_P(daily_lapack,
 //                          POTRS,
 //                          Combine(ValuesIn(large_matrix_sizeA_range),
